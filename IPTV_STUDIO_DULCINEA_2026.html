@@ -891,6 +891,18 @@ const App = (() => {
     return div.innerHTML;
   }
 
+  // Normalización global para búsqueda.
+  // Antes normalize() solo existía dentro de M3UParser, por lo que
+  // al escribir una búsqueda Chrome podía lanzar ReferenceError y
+  // detener la búsqueda.
+  function normalizeSearch(str) {
+    return String(str || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[_|:;,.()[\]{}\-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function showLoadingBar(percent) {
     const bar = $('#loadingBar');
     if (percent >= 100) {
@@ -1442,7 +1454,7 @@ const App = (() => {
   }
 
   function runSearch(query) {
-    const qn = normalize(query).trim();
+    const qn = normalizeSearch(query);
     searchResults = [];
     searchShown = 0;
     $('#searchGrid').innerHTML = '';
@@ -1451,13 +1463,28 @@ const App = (() => {
       return;
     }
 
-    // Buscar en TODA la lista, pero renderizar solo bloques pequeños.
-    for (const c of channels) {
-      const name = normalize(c.name || '');
-      const grp = normalize(c.group || '');
-      if (name.includes(qn) || grp.includes(qn)) searchResults.push(c);
+    try {
+      // Buscar en TODA la lista, pero renderizar solo bloques pequeños.
+      // El límite de 20 aquí es SOLO de renderizado; NO limita los resultados.
+      for (const c of channels) {
+        const name = normalizeSearch(c.name || '');
+        const grp = normalizeSearch(c.group || '');
+        const id = normalizeSearch(c.id || '');
+        const type = normalizeSearch(c.tvgType || '');
+        if (
+          name.includes(qn) ||
+          grp.includes(qn) ||
+          id.includes(qn) ||
+          type.includes(qn)
+        ) {
+          searchResults.push(c);
+        }
+      }
+      renderSearchResults();
+    } catch (err) {
+      console.error('Error de búsqueda:', err);
+      $('#searchLabel').textContent = 'Error al buscar. Intenta nuevamente.';
     }
-    renderSearchResults();
   }
 
 
