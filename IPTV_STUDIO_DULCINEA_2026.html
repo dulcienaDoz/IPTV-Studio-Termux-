@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#070914">
+<title>IPTV Studio • Dulcinea 2026</title>
+<style>
+:root{--bg:#05070d;--text:#f4f7ff;--muted:#8e9ab2;--cyan:#00eaff;--pink:#ff35d4;--line:#173247}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:linear-gradient(180deg,#070914,#04050a);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}body{overflow-x:hidden}
+button,input,select{font:inherit}button{cursor:pointer}.app{width:min(1500px,100%);margin:auto;padding:10px 12px 36px}
+header{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;padding:11px 4px 10px;background:linear-gradient(#070914 75%,transparent);backdrop-filter:blur(12px)}
+.logo{width:45px;height:45px;border-radius:14px;display:grid;place-items:center;font-weight:900;color:#061018;background:linear-gradient(135deg,var(--cyan),#fff,var(--pink));box-shadow:0 0 20px #00eaff33}
+.title{font-weight:900;font-size:18px}.sub{font-size:11px;color:var(--muted)}.spacer{flex:1}.icon-btn{width:40px;height:40px;border:1px solid var(--line);background:#0b1220;color:var(--text);border-radius:12px}
+.controls{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:8px}.search{display:flex;align-items:center;gap:8px;background:#0a0f1a;border:1px solid var(--line);border-radius:14px;padding:0 12px}.search input{width:100%;padding:12px 0;border:0;outline:0;background:transparent;color:var(--text)}
+.btn{border:1px solid #16425a;background:#0c1422;color:var(--text);border-radius:13px;padding:0 14px;min-height:44px}.btn.primary{border-color:#00cde6;background:linear-gradient(135deg,#0d2938,#17132b)}
+.categories{display:flex;gap:7px;overflow:auto;padding:3px 1px 11px;scrollbar-width:none}.categories::-webkit-scrollbar{display:none}.chip{white-space:nowrap;border:1px solid #ffffff12;background:#0b1120;color:#aeb8d0;border-radius:999px;padding:8px 12px;font-size:12px}.chip.active{color:#041018;background:linear-gradient(90deg,var(--cyan),#8affff);border-color:transparent;font-weight:800}
+.hero{margin:3px 0 17px;min-height:175px;border-radius:24px;padding:25px 20px;display:flex;flex-direction:column;justify-content:end;overflow:hidden;background:radial-gradient(circle at 85% 20%,#ff35d42d,transparent 35%),radial-gradient(circle at 15% 80%,#00eaff20,transparent 38%),#0a0f1b;border:1px solid #18364a}.hero h2{margin:0;font-size:clamp(25px,5vw,43px);line-height:1.05}.hero p{margin:8px 0 0;color:var(--muted);max-width:700px}.hero .btn{margin-top:14px;width:max-content}
+.section{margin:18px 0}.section-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}.section-head strong{font-size:16px}.count{font-size:11px;color:var(--muted)}
+.rail{display:grid;grid-auto-flow:column;grid-auto-columns:145px;gap:10px;overflow-x:auto;padding:2px 1px 9px;scroll-snap-type:x proximity;scrollbar-width:thin}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.card{min-width:0;background:#0b111d;border:1px solid #173247;border-radius:15px;overflow:hidden;position:relative;scroll-snap-align:start}.card:active{transform:scale(.98)}
+.poster{aspect-ratio:2/2.75;background:#101827;position:relative;overflow:hidden;display:grid;place-items:center}.poster.live{aspect-ratio:16/10}.poster img{width:100%;height:100%;object-fit:cover;display:block}.fallback{font-size:31px;font-weight:900;color:#73819b}.tag{position:absolute;top:7px;left:7px;background:#000b;padding:4px 7px;border-radius:999px;font-size:9px;font-weight:850}.fav{position:absolute;top:6px;right:6px;width:30px;height:30px;border:0;border-radius:50%;background:#000a;color:#fff}.fav.on{color:#ffd55e}.card-info{padding:8px}.card-name{font-size:12px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card-group{font-size:10px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player-wrap{background:#020308;border:1px solid #ffffff10;border-radius:16px;overflow:hidden;margin-bottom:12px}video{display:block;width:100%;aspect-ratio:16/9;background:#000;object-fit:contain}.now{display:flex;gap:10px;align-items:center;padding:10px 12px;background:#0b111d}.dot{width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px var(--cyan)}.now-name{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.now-meta{font-size:11px;color:var(--muted)}
+.empty{text-align:center;color:var(--muted);padding:32px 10px;border:1px dashed #244158;border-radius:16px}.drawer{position:fixed;inset:0;background:#0009;display:none;z-index:50}.drawer.open{display:block}.sheet{position:absolute;left:0;right:0;bottom:0;background:#0a0f1d;border-top:1px solid var(--line);border-radius:22px 22px 0 0;padding:14px;max-height:78vh;overflow:auto}.field{display:grid;gap:6px;margin:8px 0}.field label{font-size:11px;color:var(--muted)}.field input{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:#070b16;color:var(--text);outline:0}.actions{display:flex;gap:8px;margin-top:10px}.actions>*{flex:1}.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#111a2e;border:1px solid #00eaff55;padding:10px 13px;border-radius:12px;font-size:12px;opacity:0;pointer-events:none;transition:opacity .18s;z-index:80}.toast.show{opacity:1}
+@media(min-width:600px){.app{padding:14px 18px 40px}.grid{grid-template-columns:repeat(4,minmax(0,1fr))}.rail{grid-auto-columns:160px}}@media(min-width:1000px){.app{padding-left:28px;padding-right:28px}.grid{grid-template-columns:repeat(6,minmax(0,1fr))}.rail{grid-auto-columns:180px}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="neon-frame">
+    <div class="logo">DS</div>
+    <div><div class="title">IPTV STUDIO</div><div class="sub">Dulcinea • 2026 • reproductor M3U</div></div>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="settingsBtn" aria-label="Abrir configuración">⚙</button>
+  </header>
+
+  <section class="hero"><h2>Todo tu entretenimiento.</h2><p>Canales, películas y series organizados en tarjetas como una plataforma de streaming.</p><button class="btn primary" id="heroOpen">＋ Cargar lista M3U</button></section>
+  <section class="controls"><div class="search">⌕ <input id="search" type="search" placeholder="Buscar canales, películas o series..." autocomplete="off"></div><button class="btn primary" id="openBtn">＋ Lista</button></section>
+  <nav class="categories" id="categories"></nav>
+  <section class="player-wrap"><video id="video" controls playsinline preload="metadata"></video><div class="now"><span class="dot"></span><div><div class="now-name" id="nowName">Selecciona un contenido</div><div class="now-meta" id="nowMeta">Carga una lista M3U para comenzar</div></div></div></section>
+  <main id="catalog">
+    <section class="section" id="favoritesSection" hidden><div class="section-head"><strong>★ Mis favoritos</strong><span class="count" id="favCount"></span></div><div class="rail" id="favoritesRail"></div></section>
+    <section class="section" id="liveSection"><div class="section-head"><strong>● En vivo</strong><span class="count" id="liveCount"></span></div><div class="rail" id="liveRail"></div></section>
+    <section class="section" id="movieSection"><div class="section-head"><strong>🎬 Películas</strong><span class="count" id="movieCount"></span></div><div class="rail" id="movieRail"></div></section>
+    <section class="section" id="seriesSection"><div class="section-head"><strong>📚 Series</strong><span class="count" id="seriesCount"></span></div><div class="rail" id="seriesRail"></div></section>
+    <section class="section" id="searchSection" hidden><div class="section-head"><strong>Resultados</strong><span class="count" id="searchCount"></span></div><div class="grid" id="searchGrid"></div></section>
+    <div class="empty" id="emptyCatalog">Todavía no hay contenido.<br>Usa <b>＋ Lista</b> para cargar un archivo .m3u.</div>
+  </main>
+
+<div class="drawer" id="drawer">
+  <div class="sheet">
+    <div class="list-head"><strong>Cargar lista</strong><div class="spacer"></div><button class="icon-btn" id="closeBtn">×</button></div>
+    <div class="field"><label>Archivo M3U / M3U8</label><input id="file" type="file" accept=".m3u,.m3u8,.txt,application/x-mpegURL,application/vnd.apple.mpegurl"></div>
+    <div class="field"><label>O URL de una lista M3U</label><input id="url" type="url" placeholder="https://ejemplo.com/lista.m3u"></div>
+    <div class="field"><label>Método para URL</label>
+      <select id="urlMode" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:#070b16;color:var(--text);outline:0">
+        <option value="auto">Automático (Termux → directo)</option>
+        <option value="direct">Solo directo</option>
+        <option value="proxy">Proxy personalizado</option>
+      </select>
+    </div>
+    <div class="field" id="proxyField" style="display:none"><label>Proxy CORS propio (opcional)</label><input id="proxy" type="url" placeholder="https://tu-proxy.example/?url="></div>
+    <div class="actions"><button class="btn" id="demoBtn">Cargar demo</button><button class="btn primary" id="loadBtn">Cargar lista</button></div>
+    <div id="diagnostic" class="sub" style="margin-top:10px"></div>
+    <div class="sub" style="margin-top:9px">Modo automático: intenta primero el servidor local de Termux y después conexión directa. El proxy propio es opcional.</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const video=$("#video"), listEl=$("#list"), catsEl=$("#categories"), searchEl=$("#search");
+let channels=[], filtered=[], group="Todos", hls=null;
+
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("show");clearTimeout(window._toast);window._toast=setTimeout(()=>e.classList.remove("show"),2200)}
+function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function attr(s,k){const m=String(s||"").match(new RegExp(k+'="([^"]*)"','i'));return m?m[1]:''}
+
+function parseM3U(text){
+  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/), out=[]; let meta=null;
+  for(const raw of lines){
+    const line=raw.trim(); if(!line) continue;
+    if(line.toUpperCase().startsWith("#EXTINF")){
+      meta={name:(line.split(",").slice(1).join(",").trim()||"Canal"),group:attr(line,"group-title")||"Sin categoría",logo:attr(line,"tvg-logo"),id:attr(line,"tvg-id")};
+    }else if(!line.startsWith("#") && /^https?:\/\//i.test(line)){
+      if(meta){out.push({...meta,url:line});meta=null}
+    }
+  }
+  return out;
+}
+
+const favorites=new Set(JSON.parse(localStorage.getItem("dulcinea_favorites")||"[]"));
+function favKey(c){return (c.url||"")+"|"+(c.name||"")}function saveFavorites(){localStorage.setItem("dulcinea_favorites",JSON.stringify([...favorites]))}
+function typeOf(c){const g=(c.group||"").toLowerCase();if(/serie|series|season|temporada/.test(g))return"series";if(/movie|pel[ií]cula|cine|film/.test(g))return"movie";return"live"}
+function setChannels(items){channels=items.map(c=>({...c,type:typeOf(c)}));group="Todos";buildCats();applyFilter();localStorage.setItem("dulcinea_m3u_count",String(items.length));toast(items.length?`Cargados ${items.length} elementos`:"No se encontraron elementos válidos")}
+function buildCats(){const gs=[...new Set(channels.map(x=>x.group||"Sin categoría"))].sort((a,b)=>a.localeCompare(b));catsEl.innerHTML="";["Todos","Favoritos",...gs].slice(0,80).forEach(g=>{const b=document.createElement("button");b.className="chip"+(g===group?" active":"");b.textContent=g;b.onclick=()=>{group=g;buildCats();applyFilter()};catsEl.appendChild(b)})}
+function card(c){const fav=favorites.has(favKey(c)),typ=c.type,d=document.createElement("article");d.className="card";const p=document.createElement("div");p.className="poster "+(typ==="live"?"live":"");if(c.logo){const im=document.createElement("img");im.loading="lazy";im.src=c.logo;im.alt="";im.onerror=()=>im.remove();p.appendChild(im)}else{const f=document.createElement("div");f.className="fallback";f.textContent=typ==="live"?"▶":"✦";p.appendChild(f)}const tag=document.createElement("span");tag.className="tag";tag.textContent=typ==="live"?"● EN VIVO":typ==="movie"?"PELÍCULA":"SERIE";p.appendChild(tag);const star=document.createElement("button");star.className="fav"+(fav?" on":"");star.textContent=fav?"★":"☆";star.onclick=e=>{e.stopPropagation();favorites.has(favKey(c))?favorites.delete(favKey(c)):favorites.add(favKey(c));saveFavorites();applyFilter()};p.appendChild(star);d.appendChild(p);const i=document.createElement("div");i.className="card-info";i.innerHTML=`<div class="card-name">${esc(c.name)}</div><div class="card-group">${esc(c.group||"Sin categoría")}</div>`;d.appendChild(i);d.onclick=()=>play(c);return d}
+function fillRail(id,items,countId){const el=$("#"+id);el.replaceChildren();$("#"+countId).textContent=items.length;items.slice(0,80).forEach(c=>el.appendChild(card(c)))}
+function applyFilter(){const q=searchEl.value.trim().toLowerCase();const arr=channels.filter(c=>(group==="Todos"||group==="Favoritos"&&favorites.has(favKey(c))||c.group===group)&&(!q||c.name.toLowerCase().includes(q)||(c.group||"").toLowerCase().includes(q)));const fav=arr.filter(c=>favorites.has(favKey(c))),live=arr.filter(c=>c.type==="live"),movies=arr.filter(c=>c.type==="movie"),series=arr.filter(c=>c.type==="series"),searching=!!q;$("#favoritesSection").hidden=searching||!fav.length;$("#searchSection").hidden=!searching;$("#emptyCatalog").hidden=!!channels.length;if(searching){$("#searchCount").textContent=arr.length;$("#searchGrid").replaceChildren(...arr.slice(0,300).map(card))}fillRail("favoritesRail",fav,"favCount");fillRail("liveRail",live,"liveCount");fillRail("movieRail",movies,"movieCount");fillRail("seriesRail",series,"seriesCount");$("#liveSection").hidden=searching||!live.length;$("#movieSection").hidden=searching||!movies.length;$("#seriesSection").hidden=searching||!series.length}}
+function markActive(url){listEl.querySelectorAll(".channel").forEach(x=>x.classList.toggle("active",x.dataset.url===url))}
+function play(c){
+  $("#nowName").textContent=c.name;$("#nowMeta").textContent=c.group||"Sin categoría";markActive(c.url);
+  try{
+    if(hls){hls.destroy();hls=null}
+    video.pause(); video.removeAttribute("src"); video.load();
+    const isHls=/\.m3u8($|[?#])/i.test(c.url);
+    if(isHls && window.Hls && Hls.isSupported()){
+      hls=new Hls({enableWorker:true,lowLatencyMode:false,maxBufferLength:20});
+      hls.loadSource(c.url);hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED,()=>video.play().catch(()=>{}));
+      hls.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal) toast("No se pudo reproducir este canal")});
+    }else{
+      video.src=c.url; video.play().catch(()=>toast("Pulsa ▶ para iniciar el canal"));
+    }
+  }catch(e){toast("Error al abrir el canal")}
+}
+
+$("#openBtn").onclick=()=>$("#drawer").classList.add("open");
+$("#heroOpen").onclick=()=>$("#drawer").classList.add("open");
+$("#settingsBtn").onclick=()=>$("#drawer").classList.add("open");
+$("#closeBtn").onclick=()=>$("#drawer").classList.remove("open");
+$("#drawer").onclick=e=>{if(e.target.id==="drawer")$("#drawer").classList.remove("open")};
+$("#search").oninput=applyFilter;
+$("#clearBtn").onclick=()=>{channels=[];filtered=[];buildCats();render();video.pause();video.removeAttribute("src");video.load();$("#nowName").textContent="Selecciona un canal";$("#nowMeta").textContent="Carga una lista M3U para comenzar";toast("Lista limpiada")};
+
+
+$("#urlMode").onchange=()=>{
+  $("#proxyField").style.display=$("#urlMode").value==="proxy"||$("#urlMode").value==="auto"?"block":"none";
+};
+function diagnoseUrl(u){
+  try{
+    const x=new URL(u);
+    if(!/^https?:$/.test(x.protocol)) return "La URL debe comenzar con http:// o https://.";
+    return "";
+  }catch{return "La URL no tiene un formato válido."}
+}
+function showDiag(msg,ok=false){
+  const d=$("#diagnostic"); d.textContent=msg; d.style.color=ok?"#7dffbf":"#ff9cbf";
+}
+async function fetchM3U(url){
+  const direct=async()=>{const r=await fetch(url,{mode:"cors",redirect:"follow"});if(!r.ok)throw new Error("HTTP "+r.status);return await r.text()};
+  const localProxy=async()=>{
+    const endpoint="http://127.0.0.1:8765/playlist?url="+encodeURIComponent(url);
+    const r=await fetch(endpoint,{mode:"cors",redirect:"follow"});
+    if(!r.ok)throw new Error("Termux respondió HTTP "+r.status+".");
+    return await r.text();
+  };
+  const mode=$("#urlMode").value;
+  const proxy=$("#proxy").value.trim();
+
+  if(mode==="proxy"){
+    if(!proxy) throw new Error("Falta configurar el proxy propio.");
+    const endpoint=proxy.endsWith("=")||proxy.endsWith("&")
+      ? proxy+encodeURIComponent(url)
+      : proxy+(proxy.includes("?")?"&url=":"?url=")+encodeURIComponent(url);
+    const r=await fetch(endpoint,{mode:"cors",redirect:"follow"});
+    if(!r.ok)throw new Error("El proxy respondió HTTP "+r.status+".");
+    return {text:await r.text(),method:"proxy propio"};
+  }
+
+  if(mode!=="direct"){
+    try{
+      const text=await localProxy();
+      return {text,method:"Termux local"};
+    }catch(localError){}
+  }
+
+  if(mode!=="proxy"){
+    try{
+      const text=await direct();
+      return {text,method:"directo"};
+    }catch(e){
+      if(mode==="direct") throw new Error("El servidor bloqueó la lectura directa (posible CORS).");
+    }
+  }
+
+  throw new Error("No se pudo cargar la lista. Abre el servidor de Termux en 127.0.0.1:8765 o usa una URL con CORS.");
+}
+
+$("#file").onchange=async e=>{
+  const f=e.target.files[0]; if(!f)return;
+  try{setChannels(parseM3U(await f.text()));$("#drawer").classList.remove("open")}catch{toast("No se pudo leer el archivo")}
+};
+$("#loadBtn").onclick=async()=>{
+  const u=$("#url").value.trim();
+  if(!u){toast("Selecciona un archivo o pega una URL");return}
+  const bad=diagnoseUrl(u); if(bad){showDiag(bad);toast("URL inválida");return}
+  showDiag("Conectando con la lista…");
+  try{
+    const result=await fetchM3U(u);
+    const items=parseM3U(result.text);
+    if(!items.length) throw new Error("La respuesta no parece una lista M3U válida.");
+    setChannels(items);
+    showDiag(`Lista cargada correctamente mediante ${result.method}.`,true);
+    $("#drawer").classList.remove("open");
+  }catch(e){
+    showDiag("Error: "+(e.message||"No fue posible leer la lista."));
+    toast("No se pudo cargar la URL");
+  }
+};
+$("#demoBtn").onclick=()=>{
+  const demo=`#EXTM3U
+#EXTINF:-1 group-title="Demo",Canal de prueba 1
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 group-title="Demo",Canal de prueba 2
+https://test-streams.mux.dev/test_001/stream.m3u8`;
+  setChannels(parseM3U(demo));$("#drawer").classList.remove("open");
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.2/dist/hls.min.js"></script>
+</body>
+</html>
