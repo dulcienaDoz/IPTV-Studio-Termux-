@@ -748,7 +748,7 @@ const PlayerService = (() => {
            /\/(?:hls|hls_live)\//i.test(url);
   }
 
-  async function fetchWithTimeout(url, timeout = 15000) {
+  async function fetchWithTimeout(url, timeout = 60000) {
     abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), timeout);
     try {
@@ -1543,7 +1543,7 @@ const App = (() => {
           urlToFetch = proxy + sep + 'url=' + encodeURIComponent(u);
         } else if (method === 'auto') {
           try {
-            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(5000) });
+            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(60000), cache: 'no-store' });
             if (resp.ok) {
               const text = await resp.text();
               const items = M3UParser.parse(text);
@@ -1558,7 +1558,7 @@ const App = (() => {
             }
           } catch (e) { /* fallback */ }
         }
-        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(15000) });
+        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(30000), cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const text = await resp.text();
         const items = M3UParser.parse(text);
@@ -1571,7 +1571,10 @@ const App = (() => {
         setTimeout(closeDrawer, 900);
         showLoadingBar(100);
       } catch (err) {
-        setDStatus('Error: ' + err.message, 'err');
+        const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+          ? 'La carga tardó demasiado. Termux puede seguir procesando la lista; vuelve a intentar sin cerrar Chrome.'
+          : (err?.message || 'No se pudo cargar la lista.');
+        setDStatus('Error: ' + msg, 'err');
         showLoadingBar(0);
       }
     });
@@ -1636,21 +1639,24 @@ const App = (() => {
           if (!items.length) throw new Error(`${label}: no contiene entradas M3U válidas`);
           return { text, items, method: label };
         } catch (e) {
-          errors.push(e?.message || String(e));
+          const msg = (e?.name === 'TimeoutError' || e?.name === 'AbortError')
+            ? `${label}: tiempo de espera agotado`
+            : (e?.message || String(e));
+          errors.push(msg);
           return null;
         }
       };
 
       if (method === 'auto' || method === 'Termux local' || method === 'termux') {
-        const local = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 5000);
+        const local = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 60000);
         if (local) return local;
       }
       if ((method === 'proxy' || proxyUrl) && proxyUrl) {
         const sep = proxyUrl.includes('?') ? '&' : '?';
-        const proxied = await tryFetch('proxy', proxyUrl + sep + 'url=' + encodeURIComponent(sourceUrl));
+        const proxied = await tryFetch('proxy', proxyUrl + sep + 'url=' + encodeURIComponent(sourceUrl), 45000);
         if (proxied) return proxied;
       }
-      const direct = await tryFetch('directo', sourceUrl);
+      const direct = await tryFetch('directo', sourceUrl, 30000);
       if (direct) return direct;
       throw new Error(errors.join(' · ') || 'No se pudo descargar la lista.');
     }
