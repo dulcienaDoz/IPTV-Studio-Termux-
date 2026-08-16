@@ -1149,7 +1149,7 @@ async function playbackUrl(url){
   return localStreamProxy ? 'http://127.0.0.1:8765/stream?url='+encodeURIComponent(url) : url;
 }
 
-function playChannel(c){
+async function playChannel(c){
   curCh=c;
   $('#playerName').textContent=c.name;
   $('#playerGrp').textContent=c.group||'Sin categoría';
