@@ -242,7 +242,11 @@ img{max-width:100%;display:block}
 ══════════════════════════════════════ */
 .content{position:relative;z-index:2;margin-top:-80px;padding-bottom:90px}
 
-.cat-row{margin-bottom:3.5vw;padding:0 4%}
+.cat-row{
+  margin-bottom:3.5vw;padding:0 4%;
+  content-visibility:auto;
+  contain-intrinsic-size:0 220px;
+}
 .row-hdr{
   display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:default
 }
@@ -291,7 +295,10 @@ img{max-width:100%;display:block}
   width:100%;aspect-ratio:16/9;border-radius:var(--card-r);
   overflow:hidden;background:var(--bg3);position:relative
 }
-.card-thumb img{width:100%;height:100%;object-fit:cover}
+.card-thumb img{
+  width:100%;height:100%;object-fit:cover;
+  content-visibility:auto;
+}
 .card-fb{
   position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:6px;
@@ -558,6 +565,20 @@ img{max-width:100%;display:block}
   .modal-body{padding:0 16px 24px}
   .modal-hero-ttl{padding:16px}
 }
+@media (hover:none){
+  .card:hover{transform:none;z-index:auto}
+  .card:hover .card-ov{opacity:0}
+}
+.row-more{
+  flex:0 0 auto;min-width:92px;height:72px;
+  margin:12px 2px 0;padding:0 12px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:6px;background:rgba(255,255,255,.05);
+  color:var(--text2);font-size:11px;font-weight:700;
+}
+.row-more:active{background:rgba(255,255,255,.12)}
+.player-status{font-size:11px;color:#aaa;margin-top:2px;min-height:14px}
+
 @media(prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
 }
@@ -703,10 +724,11 @@ img{max-width:100%;display:block}
     <div class="player-info-bar">
       <div class="player-ch-name" id="playerName">Canal</div>
       <div class="player-ch-grp" id="playerGrp">Categoría</div>
+      <div class="player-status" id="playerStatus">Listo</div>
     </div>
     <button class="btn-circle" id="playerListBtn" style="font-size:14px" title="Mi lista">＋</button>
   </div>
-  <video id="mainVid" controls playsinline preload="metadata"></video>
+  <video id="mainVid" controls playsinline preload="none"></video>
 </div>
 
 <!-- ══════════ PROFILES ══════════ -->
@@ -787,6 +809,8 @@ img{max-width:100%;display:block}
 <!-- ══════════ TOAST ══════════ -->
 <div class="toast" id="toast"></div>
 
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.2/dist/hls.min.js"></script>
 <script>
 // ═══════════ STATE ═══════════
 let channels = [], groups = {}, myList = [], curCh = null, hls = null;
@@ -829,18 +853,30 @@ function groupIcon(g){
 
 // ═══════════ M3U PARSER ═══════════
 function parseM3U(text){
-  const lines = text.replace(/^\uFEFF/,'').split(/\r?\n/);
-  const out=[]; let meta=null;
-  for(const raw of lines){
-    const line=raw.trim(); if(!line) continue;
+  // Parser tolerante: conserva datos útiles y evita duplicados.
+  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/);
+  const out=[], seen=new Set();
+  let meta=null;
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i].trim();
+    if(!line) continue;
     if(line.toUpperCase().startsWith('#EXTINF')){
+      const comma=line.indexOf(',');
       meta={
-        name:(line.split(',').slice(1).join(',').trim()||'Canal'),
+        name:(comma>=0?line.slice(comma+1).trim():'Canal')||'Canal',
         group:attr(line,'group-title')||'Sin categoría',
-        logo:attr(line,'tvg-logo'), id:attr(line,'tvg-id')
+        logo:attr(line,'tvg-logo'),
+        id:attr(line,'tvg-id')
       };
-    } else if(!line.startsWith('#')&&/^https?:\/\//i.test(line)){
-      if(meta){out.push({...meta,url:line});meta=null;}
+    }else if(!line.startsWith('#') && /^(https?|rtmp|rtsp):\/\//i.test(line)){
+      if(meta){
+        const url=line;
+        if(!seen.has(url)){
+          out.push({...meta,url});
+          seen.add(url);
+        }
+        meta=null;
+      }
     }
   }
   return out;
@@ -848,54 +884,75 @@ function parseM3U(text){
 
 // ═══════════ SET CHANNELS ═══════════
 function setChannels(items){
-  channels=items; groups={};
+  channels=items; groups=Object.create(null);
   for(const c of items){
-    if(!groups[c.group]) groups[c.group]=[];
-    groups[c.group].push(c);
+    const g=c.group||'Sin categoría';
+    (groups[g]||(groups[g]=[])).push(c);
   }
   updateHero(); renderRows(); updateSidebarCats();
   localStorage.setItem('ds_count',String(items.length));
-  toast(`✓ Cargados ${items.length} canales`);
+  toast(`✓ Cargados ${items.length} elementos`);
 }
 
 // ═══════════ HERO ═══════════
 function updateHero(){
   if(!channels.length) return;
-  const f = channels[Math.floor(Math.random()*Math.min(channels.length,15))];
-  curCh = curCh || f;
-  $('#heroTitle').innerHTML = esc(f.name);
-  $('#heroSub').textContent  = `Grupo: ${f.group} • Transmisión en directo disponible.`;
+  const f=channels[Math.floor(Math.random()*Math.min(channels.length,15))];
+  curCh=curCh||f;
+  $('#heroTitle').textContent=f.name;
+  $('#heroSub').textContent=`${f.group||'Sin categoría'} • Selecciona Reproducir para comenzar.`;
+  const bg=$('#heroBg');
+  bg.innerHTML='';
   if(f.logo){
-    const bg=$('#heroBg');
-    bg.innerHTML=`<img src="${esc(f.logo)}" alt="" onerror="this.style.display='none'"><div style="position:absolute;inset:0;background:linear-gradient(120deg,#0d0821,#1a0915,#0a0a18)"></div>`;
+    const img=document.createElement('img');
+    img.src=f.logo; img.alt=''; img.loading='eager'; img.decoding='async';
+    img.onerror=()=>img.remove();
+    bg.appendChild(img);
   }
+  const grad=document.createElement('div');
+  grad.style.cssText='position:absolute;inset:0;background:linear-gradient(120deg,#0d0821,#1a0915,#0a0a18)';
+  bg.appendChild(grad);
   $('#heroPlayBtn').onclick=()=>playChannel(f);
   $('#heroInfoBtn').onclick=()=>openDetail(f);
-  $('#heroInfoBtn').textContent='ℹ\u00A0 Más información';
 }
 
-// ═══════════ RENDER ROWS ═══════════
+// ═══════════ RENDER ROWS OPTIMIZADO ═══════════
+const INITIAL_PER_ROW=window.matchMedia('(max-width:540px)').matches?10:16;
+const BATCH_PER_ROW=20;
+
 function renderRows(){
-  const cont=$('#rowsCont'); cont.innerHTML='';
+  const cont=$('#rowsCont'); cont.replaceChildren();
   if(!channels.length){
-    cont.innerHTML=`<div class="empty-wrap"><div class="ei">📺</div><h3>Sin contenido cargado</h3><p>Carga tu lista M3U para ver tus canales organizados por categorías en carruseles al estilo Netflix.</p><button class="btn-red" onclick="openDrawer()" style="margin-top:8px">📂 Cargar lista M3U</button></div>`;
+    cont.innerHTML=`<div class="empty-wrap"><div class="ei">📺</div><h3>Sin contenido cargado</h3><p>Carga tu lista M3U para ver tus canales organizados por categorías.</p><button class="btn-red" onclick="openDrawer()" style="margin-top:8px">📂 Cargar lista M3U</button></div>`;
     return;
   }
-  // Mi lista
-  const myChans = channels.filter(c=>myList.includes(c.url));
-  if(myChans.length) cont.appendChild(buildRow('⭐ Mi lista', myChans));
 
-  // Recently played (if any)
-  if(curCh) cont.appendChild(buildRow('▶ Continuar viendo',[curCh,...channels.filter(c=>c.url!==curCh.url).slice(0,9)]));
+  const mySet=new Set(myList);
+  const myChans=channels.filter(c=>mySet.has(c.url));
+  if(myChans.length) cont.appendChild(buildRow('⭐ Mi lista',myChans));
 
-  // Groups sorted
-  const gNames = Object.keys(groups).sort((a,b)=>a.localeCompare(b));
-  for(const g of gNames) cont.appendChild(buildRow(`${groupIcon(g)} ${g}`, groups[g]));
+  if(curCh){
+    const recent=[curCh];
+    for(const c of channels){
+      if(c.url!==curCh.url && recent.length<10) recent.push(c);
+      if(recent.length>=10) break;
+    }
+    cont.appendChild(buildRow('▶ Continuar viendo',recent));
+  }
+
+  const gNames=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
+  const frag=document.createDocumentFragment();
+  for(const g of gNames) frag.appendChild(buildRow(`${groupIcon(g)} ${g}`,groups[g]));
+  cont.appendChild(frag);
 }
 
-function buildRow(title, items){
-  const sec=document.createElement('div');
-  sec.className='cat-row'; sec.dataset.rowKey=title;
+function buildRow(title,items){
+  const sec=document.createElement('section');
+  sec.className='cat-row';
+  sec.dataset.rowKey=title;
+  sec._items=items;
+  sec._shown=0;
+
   sec.innerHTML=`
     <div class="row-hdr">
       <span class="row-ttl">${esc(title)}</span>
@@ -904,18 +961,59 @@ function buildRow(title, items){
     </div>
     <div class="car-wrap">
       <button class="car-btn lft" aria-label="Anterior">❮</button>
-      <div class="car-track" id="trk_${esc(title.replace(/\W/g,'_'))}"></div>
+      <div class="car-track"></div>
       <button class="car-btn rgt" aria-label="Siguiente">❯</button>
     </div>`;
-  const lft=sec.querySelector('.lft'), rgt=sec.querySelector('.rgt');
+
   const trk=sec.querySelector('.car-track');
-  lft.addEventListener('click',()=>scrollTrack(trk,-1));
-  rgt.addEventListener('click',()=>scrollTrack(trk,1));
-  items.forEach(c=>trk.appendChild(buildCard(c)));
+  sec.querySelector('.lft').addEventListener('click',()=>scrollTrack(trk,-1));
+  sec.querySelector('.rgt').addEventListener('click',()=>scrollTrack(trk,1));
+
+  renderMoreCards(sec);
+
+  if(items.length>sec._shown){
+    const more=document.createElement('button');
+    more.className='row-more';
+    more.type='button';
+    more.textContent=`＋ ${items.length-sec._shown} más`;
+    more.addEventListener('click',()=>{
+      renderMoreCards(sec);
+      if(sec._shown>=sec._items.length) more.remove();
+      else more.textContent=`＋ ${sec._items.length-sec._shown} más`;
+      requestAnimationFrame(()=>trk.scrollTo({left:trk.scrollWidth,behavior:'smooth'}));
+    });
+    trk.appendChild(more);
+  }
   return sec;
 }
 
-function scrollTrack(trk,dir){trk.scrollBy({left:dir*trk.clientWidth*.8,behavior:'smooth'})}
+function renderMoreCards(sec){
+  const trk=sec.querySelector('.car-track');
+  const more=trk.querySelector('.row-more');
+  if(more) more.remove();
+
+  const end=Math.min(sec._shown+(sec._shown===0?INITIAL_PER_ROW:BATCH_PER_ROW),sec._items.length);
+  const frag=document.createDocumentFragment();
+  for(let i=sec._shown;i<end;i++) frag.appendChild(buildCard(sec._items[i]));
+  trk.appendChild(frag);
+  sec._shown=end;
+
+  if(end<sec._items.length){
+    const moreBtn=document.createElement('button');
+    moreBtn.className='row-more';
+    moreBtn.type='button';
+    moreBtn.textContent=`＋ ${sec._items.length-end} más`;
+    moreBtn.addEventListener('click',()=>{
+      renderMoreCards(sec);
+      requestAnimationFrame(()=>trk.scrollTo({left:trk.scrollWidth,behavior:'smooth'}));
+    });
+    trk.appendChild(moreBtn);
+  }
+}
+
+function scrollTrack(trk,dir){
+  trk.scrollBy({left:dir*trk.clientWidth*.8,behavior:'smooth'});
+}
 
 // ═══════════ CARD ═══════════
 function buildCard(c){
@@ -926,35 +1024,38 @@ function buildCard(c){
   const thumb=document.createElement('div'); thumb.className='card-thumb';
   if(c.logo){
     const img=document.createElement('img');
-    img.loading='lazy'; img.src=c.logo; img.alt=esc(c.name);
-    img.addEventListener('error',()=>{
-      thumb.innerHTML=`<div class="card-fb"><div class="card-fb-icon">📺</div><div class="card-fb-name">${esc(c.name)}</div></div>`;
-    });
+    img.loading='lazy'; img.decoding='async'; img.src=c.logo; img.alt='';
+    img.onerror=()=>{
+      img.remove();
+      if(!thumb.querySelector('.card-fb')){
+        const fb=document.createElement('div');
+        fb.className='card-fb';
+        fb.innerHTML=`<div class="card-fb-icon">📺</div><div class="card-fb-name">${esc(c.name)}</div>`;
+        thumb.insertBefore(fb,thumb.firstChild);
+      }
+    };
     thumb.appendChild(img);
-  } else {
+  }else{
     thumb.innerHTML=`<div class="card-fb"><div class="card-fb-icon">📺</div><div class="card-fb-name">${esc(c.name)}</div></div>`;
   }
 
   const liveBadge=document.createElement('div');
-  liveBadge.className='card-live'; liveBadge.textContent='EN VIVO';
+  liveBadge.className='card-live'; liveBadge.textContent='STREAM';
   thumb.appendChild(liveBadge);
 
-  const ov=document.createElement('div'); ov.className='card-ov';
+  const ov=document.createElement('div');
+  ov.className='card-ov';
   ov.innerHTML=`<div class="card-ov-name">${esc(c.name)}</div><div class="card-ov-btns"><button class="cob play" title="Reproducir">▶</button><button class="cob listbtn" title="${inList?'Quitar de Mi lista':'Añadir a Mi lista'}">${inList?'✓':'＋'}</button><button class="cob infobtn" title="Más información">ℹ</button></div>`;
   thumb.appendChild(ov);
 
   const lbl=document.createElement('div'); lbl.className='card-lbl'; lbl.textContent=c.name;
   const grp=document.createElement('div'); grp.className='card-grp'; grp.textContent=c.group||'';
 
-  div.appendChild(thumb);
-  div.appendChild(lbl);
-  div.appendChild(grp);
-
+  div.append(thumb,lbl,grp);
   ov.querySelector('.play').addEventListener('click',e=>{e.stopPropagation();playChannel(c)});
   ov.querySelector('.listbtn').addEventListener('click',e=>{e.stopPropagation();toggleMyList(c,div)});
   ov.querySelector('.infobtn').addEventListener('click',e=>{e.stopPropagation();openDetail(c)});
   div.addEventListener('click',()=>openDetail(c));
-
   return div;
 }
 
@@ -1012,38 +1113,132 @@ function closeDetail(){
 $('#modalX').addEventListener('click',closeDetail);
 $('#modalBg').addEventListener('click',e=>{ if(e.target===$('#modalBg')) closeDetail(); });
 
-// ═══════════ PLAYER ═══════════
+// ═══════════ PLAYER ROBUSTO ═══════════
+function setPlayerStatus(msg,kind=''){
+  const el=$('#playerStatus');
+  if(!el) return;
+  el.textContent=msg;
+  el.style.color=kind==='err'?'#ff9cbf':kind==='ok'?'#7dffbf':'#aaa';
+}
+
+function isHlsUrl(url){
+  return /\.m3u8(?:$|[?#])/i.test(url) ||
+         /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
+         /\/(?:hls|hls_live)\//i.test(url);
+}
+
+function mediaErrorText(err){
+  if(!err) return 'No se pudo reproducir.';
+  switch(err.code){
+    case 1:return 'Reproducción cancelada.';
+    case 2:return 'Error de red o servidor.';
+    case 3:return 'Formato o códec no compatible.';
+    case 4:return 'Formato no compatible o URL protegida.';
+    default:return 'No se pudo reproducir.';
+  }
+}
+
+let localStreamProxy=null;
+async function playbackUrl(url){
+  if(localStreamProxy===false) return url;
+  if(localStreamProxy===true) return 'http://127.0.0.1:8765/stream?url='+encodeURIComponent(url);
+  try{
+    const r=await fetch('http://127.0.0.1:8765/health',{cache:'no-store',signal:AbortSignal.timeout(700)});
+    localStreamProxy=r.ok;
+  }catch{ localStreamProxy=false; }
+  return localStreamProxy ? 'http://127.0.0.1:8765/stream?url='+encodeURIComponent(url) : url;
+}
+
 function playChannel(c){
   curCh=c;
   $('#playerName').textContent=c.name;
   $('#playerGrp').textContent=c.group||'Sin categoría';
+  setPlayerStatus('Preparando reproducción…');
+
   const lb=$('#playerListBtn');
   lb._ch=c; lb.textContent=myList.includes(c.url)?'✓':'＋';
   lb.onclick=()=>toggleMyList(c,null);
 
   const vid=$('#mainVid');
+  vid.crossOrigin='anonymous';
+
   try{
     if(hls){hls.destroy();hls=null;}
     vid.pause(); vid.removeAttribute('src'); vid.load();
-    const isHls=/\.m3u8($|[?#])/i.test(c.url);
-    if(isHls&&window.Hls&&Hls.isSupported()){
-      hls=new Hls({enableWorker:true,lowLatencyMode:false,maxBufferLength:20});
-      hls.loadSource(c.url); hls.attachMedia(vid);
-      hls.on(Hls.Events.MANIFEST_PARSED,()=>vid.play().catch(()=>{}));
-      hls.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal) toast('No se pudo reproducir este canal');});
-    } else {
-      vid.src=c.url; vid.play().catch(()=>toast('Pulsa ▶ para iniciar'));
-    }
-  } catch(e){ toast('Error al abrir el canal'); }
 
-  $('#playerFs').classList.add('open');
-  document.body.style.overflow='hidden';
+    const isHls=isHlsUrl(c.url);
+    const sourceUrl=await playbackUrl(c.url);
+    $('#playerFs').classList.add('open');
+    document.body.style.overflow='hidden';
+
+    const onPlaying=()=>setPlayerStatus(isHls?'HLS conectado':'Reproduciendo','ok');
+    const onWaiting=()=>setPlayerStatus('Cargando…');
+    const onStalled=()=>setPlayerStatus('La señal está tardando…');
+    const onError=()=>setPlayerStatus(mediaErrorText(vid.error),'err');
+    vid.onplaying=onPlaying;
+    vid.onwaiting=onWaiting;
+    vid.onstalled=onStalled;
+    vid.onerror=onError;
+
+    if(isHls && window.Hls && Hls.isSupported()){
+      setPlayerStatus('Conectando HLS…');
+      hls=new Hls({
+        enableWorker:true,
+        lowLatencyMode:false,
+        maxBufferLength:12,
+        maxMaxBufferLength:24,
+        backBufferLength:8,
+        capLevelToPlayerSize:true,
+        manifestLoadingMaxRetry:2,
+        levelLoadingMaxRetry:2,
+        fragLoadingMaxRetry:2,
+        fragLoadingRetryDelay:800
+      });
+
+      hls.on(Hls.Events.MEDIA_ATTACHED,()=>hls.loadSource(c.url));
+      hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+        setPlayerStatus('HLS listo. Reproduciendo…');
+        vid.play().catch(()=>setPlayerStatus('Pulsa ▶ para iniciar'));
+      });
+      hls.on(Hls.Events.ERROR,(_,d)=>{
+        if(!d.fatal) return;
+        if(d.type===Hls.ErrorTypes.NETWORK_ERROR){
+          setPlayerStatus('Error de red. Reintentando…','err');
+          try{hls.startLoad();}catch{}
+        }else if(d.type===Hls.ErrorTypes.MEDIA_ERROR){
+          setPlayerStatus('Recuperando vídeo…');
+          try{hls.recoverMediaError();}catch{}
+        }else{
+          setPlayerStatus('El servidor rechazó el vídeo. Puede requerir acceso directo/proxy.','err');
+          toast('No se pudo reproducir este vídeo');
+        }
+      });
+      hls.attachMedia(vid);
+    }else{
+      // MP4/TS/WEBM y HLS nativo: dejamos que el reproductor del sistema
+      // determine el formato. Esto es importante para películas y series.
+      setPlayerStatus(isHls?'HLS nativo…':'Abriendo vídeo…');
+      vid.src=sourceUrl;
+      vid.load();
+      vid.play().catch(()=>{
+        setPlayerStatus('Pulsa ▶ para iniciar');
+      });
+    }
+  }catch(e){
+    setPlayerStatus('Error: '+(e.message||'desconocido'),'err');
+    toast('Error al abrir el vídeo');
+  }
 }
+
 function stopPlayer(){
   const vid=$('#mainVid');
-  vid.pause(); if(hls){hls.destroy();hls=null;} vid.removeAttribute('src'); vid.load();
+  vid.onplaying=vid.onwaiting=vid.onstalled=vid.onerror=null;
+  vid.pause();
+  if(hls){hls.destroy();hls=null;}
+  vid.removeAttribute('src'); vid.load();
   $('#playerFs').classList.remove('open');
   document.body.style.overflow='';
+  setPlayerStatus('Listo');
 }
 $('#playerBack').addEventListener('click',stopPlayer);
 
@@ -1078,7 +1273,11 @@ function jumpToRow(name){
 // ═══════════ SEARCH ═══════════
 $('#searchToggle').addEventListener('click',openSearch);
 $('#searchClose').addEventListener('click',closeSearch);
-$('#searchInput').addEventListener('input',runSearch);
+let searchTimer=0;
+$('#searchInput').addEventListener('input',()=>{
+  clearTimeout(searchTimer);
+  searchTimer=setTimeout(runSearch,120);
+});
 
 function openSearch(){
   $('#searchOverlay').classList.add('open');
@@ -1094,9 +1293,20 @@ function runSearch(){
   const q=$('#searchInput').value.trim().toLowerCase();
   const grid=$('#searchGrid'); grid.innerHTML='';
   if(!q){ $('#searchLabel').textContent='Escribe para buscar'; return; }
-  const res=channels.filter(c=>c.name.toLowerCase().includes(q)||(c.group||'').toLowerCase().includes(q)).slice(0,36);
-  $('#searchLabel').textContent=res.length?`${res.length} resultados para "${q}"`:'Sin resultados';
-  res.forEach(c=>grid.appendChild(buildCard(c)));
+  const qn=q.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const res=[];
+  for(const c of channels){
+    const name=(c.name||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const grp=(c.group||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(name.includes(qn)||grp.includes(qn)){
+      res.push(c);
+      if(res.length>=24) break;
+    }
+  }
+  $('#searchLabel').textContent=res.length?`${res.length}${res.length===24?' +':''} resultados para "${q}"`:'Sin resultados';
+  const frag=document.createDocumentFragment();
+  res.forEach(c=>frag.appendChild(buildCard(c)));
+  grid.appendChild(frag);
 }
 
 // ═══════════ DRAWER ═══════════
@@ -1276,6 +1486,5 @@ document.addEventListener('keydown',e=>{
 // ═══════════ INIT ═══════════
 renderRows();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.2/dist/hls.min.js"></script>
 </body>
 </html>
