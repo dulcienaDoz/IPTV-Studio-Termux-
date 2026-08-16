@@ -1543,14 +1543,14 @@ const App = (() => {
           urlToFetch = proxy + sep + 'url=' + encodeURIComponent(u);
         } else if (method === 'auto') {
           try {
-            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(60000), cache: 'no-store' });
+            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(300000), cache: 'no-store' });
             if (resp.ok) {
               const text = await resp.text();
               const items = M3UParser.parse(text);
               if (items.length) {
                 currentListMeta = { id: null, name: $('#listNameInput').value.trim() || 'Mi lista IPTV', url: u, method: 'Termux local', proxy: '', updatedAt: Date.now() };
                 setChannels(items);
-                setDStatus(`Cargado (Termux): ${items.length} elementos.`, 'ok');
+                setDStatus(`Cargado (Termux): ${items.length} elementos. Procesando títulos e imágenes…`, 'ok');
                 setTimeout(closeDrawer, 900);
                 showLoadingBar(100);
                 return;
@@ -1558,7 +1558,7 @@ const App = (() => {
             }
           } catch (e) { /* fallback */ }
         }
-        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(30000), cache: 'no-store' });
+        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(120000), cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const text = await resp.text();
         const items = M3UParser.parse(text);
@@ -1572,7 +1572,7 @@ const App = (() => {
         showLoadingBar(100);
       } catch (err) {
         const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
-          ? 'La carga tardó demasiado. Termux puede seguir procesando la lista; vuelve a intentar sin cerrar Chrome.'
+          ? 'La descarga superó el tiempo máximo. Comprueba que Termux siga activo y vuelve a intentarlo.'
           : (err?.message || 'No se pudo cargar la lista.');
         setDStatus('Error: ' + msg, 'err');
         showLoadingBar(0);
@@ -1630,7 +1630,7 @@ const App = (() => {
     // cuando está disponible y después proxy/directo como respaldo.
     async function fetchPlaylistText(sourceUrl, method = 'auto', proxyUrl = '') {
       const errors = [];
-      const tryFetch = async (label, url, timeout = 15000) => {
+      const tryFetch = async (label, url, timeout = 120000) => {
         try {
           const resp = await fetch(url, { signal: AbortSignal.timeout(timeout), cache: 'no-store' });
           if (!resp.ok) throw new Error(`${label}: HTTP ${resp.status}`);
@@ -1648,15 +1648,15 @@ const App = (() => {
       };
 
       if (method === 'auto' || method === 'Termux local' || method === 'termux') {
-        const local = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 60000);
+        const local = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 300000);
         if (local) return local;
       }
       if ((method === 'proxy' || proxyUrl) && proxyUrl) {
         const sep = proxyUrl.includes('?') ? '&' : '?';
-        const proxied = await tryFetch('proxy', proxyUrl + sep + 'url=' + encodeURIComponent(sourceUrl), 45000);
+        const proxied = await tryFetch('proxy', proxyUrl + sep + 'url=' + encodeURIComponent(sourceUrl), 120000);
         if (proxied) return proxied;
       }
-      const direct = await tryFetch('directo', sourceUrl, 30000);
+      const direct = await tryFetch('directo', sourceUrl, 120000);
       if (direct) return direct;
       throw new Error(errors.join(' · ') || 'No se pudo descargar la lista.');
     }
