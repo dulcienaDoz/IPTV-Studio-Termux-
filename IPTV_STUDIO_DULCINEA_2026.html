@@ -764,6 +764,7 @@ img{max-width:100%;display:block}
 <div class="drawer" id="drawer">
   <div class="drawer-pill"></div>
   <div class="drawer-ttl">📂 Cargar lista M3U</div>
+  <div style="font-size:12px;color:#aaa;margin:-12px 0 18px">⚡ Modo rápido: máximo 5 títulos, imágenes y URLs por categoría.</div>
   <div class="field">
     <label>Archivo M3U / M3U8</label>
     <label class="file-lbl" for="fileInput">
@@ -827,8 +828,30 @@ function esc(s){
   return String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 function attr(s,k){
-  const m = String(s||'').match(new RegExp(k+'="([^"]*)"','i'));
+  const m = String(s||'').match(new RegExp(k+'\\s*=\\s*["\\\']([^"\\\']*)["\\\']','i'));
   return m ? m[1] : '';
+}
+
+function normText(s){
+  return String(s||'').toLowerCase()
+    .normalize('NFD').replace(/[\\u0300-\\u036f]/g,'')
+    .replace(/[_|:;,.()[\\]{}\\-]+/g,' ');
+}
+
+function isSeriesItem(c){
+  const s=normText((c.group||'')+' '+(c.name||''));
+  return /\\b(series|serie|tv series|tv shows|shows|temporada|temporadas|season|seasons|episodio|episodios|episod|seriado|seriados|novela|novelas)\\b/.test(s);
+}
+
+function isMovieItem(c){
+  if(isSeriesItem(c)) return false;
+  const s=normText((c.group||'')+' '+(c.name||''));
+  return /\\b(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|premiere|premieres)\\b/.test(s);
+}
+
+function isLiveItem(c){
+  const s=normText((c.group||'')+' '+(c.name||''));
+  return /\\b(en vivo|envivo|live|directo|canales|channel|channels|tv en vivo)\\b/.test(s);
 }
 function toast(msg){
   const t=$('#toast'); t.textContent=msg; t.classList.add('show');
@@ -845,35 +868,40 @@ function groupIcon(g){
   if(/noticias|news/.test(g))return '📰';
   if(/música|musica|music/.test(g))return '🎵';
   if(/infantil|niño|kids/.test(g))return '🧸';
-  if(/serie|drama/.test(g))return '📺';
-  if(/película|movie/.test(g))return '🎥';
+  if(/serie|series|drama|temporada|season|tv shows/.test(g))return '📺';
+  if(/película|peliculas|movie|movies|cine|cinema|film|films|vod/.test(g))return '🎥';
   if(/vivo|live|directo/.test(g))return '📡';
   return '📂';
 }
 
 // ═══════════ M3U PARSER ═══════════
 function parseM3U(text){
-  // Parser tolerante: conserva datos útiles y evita duplicados.
+  // Parser ligero: conserva SOLO los primeros 5 elementos por categoría.
+  // Esto evita llenar memoria/renderizar miles de URLs de una lista IPTV enorme.
   const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/);
-  const out=[], seen=new Set();
+  const out=[], seen=new Set(), groupCounts=Object.create(null);
   let meta=null;
   for(let i=0;i<lines.length;i++){
     const line=lines[i].trim();
     if(!line) continue;
     if(line.toUpperCase().startsWith('#EXTINF')){
       const comma=line.indexOf(',');
+      const group=attr(line,'group-title')||'Sin categoría';
       meta={
         name:(comma>=0?line.slice(comma+1).trim():'Canal')||'Canal',
-        group:attr(line,'group-title')||'Sin categoría',
+        group,
         logo:attr(line,'tvg-logo'),
         id:attr(line,'tvg-id')
       };
     }else if(!line.startsWith('#') && /^(https?|rtmp|rtsp):\/\//i.test(line)){
       if(meta){
         const url=line;
-        if(!seen.has(url)){
+        const g=meta.group||'Sin categoría';
+        const count=groupCounts[g]||0;
+        if(count<5 && !seen.has(url)){
           out.push({...meta,url});
           seen.add(url);
+          groupCounts[g]=count+1;
         }
         meta=null;
       }
@@ -917,8 +945,8 @@ function updateHero(){
 }
 
 // ═══════════ RENDER ROWS OPTIMIZADO ═══════════
-const INITIAL_PER_ROW=window.matchMedia('(max-width:540px)').matches?10:16;
-const BATCH_PER_ROW=20;
+const INITIAL_PER_ROW=5;
+const BATCH_PER_ROW=5;
 
 function renderRows(){
   const cont=$('#rowsCont'); cont.replaceChildren();
@@ -940,16 +968,25 @@ function renderRows(){
     cont.appendChild(buildRow('▶ Continuar viendo',recent));
   }
 
+  // Secciones inteligentes: no dependen de que el proveedor use
+  // exactamente "Movies", "Películas", "Series", etc.
+  const seriesItems=channels.filter(isSeriesItem);
+  const movieItems=channels.filter(isMovieItem);
+
+  if(movieItems.length) cont.appendChild(buildRow('🎬 Cine y películas',movieItems,'peliculas'));
+  if(seriesItems.length) cont.appendChild(buildRow('📺 Series',seriesItems,'series'));
+
   const gNames=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
   const frag=document.createDocumentFragment();
   for(const g of gNames) frag.appendChild(buildRow(`${groupIcon(g)} ${g}`,groups[g]));
   cont.appendChild(frag);
 }
 
-function buildRow(title,items){
+function buildRow(title,items,sectionKey=''){
   const sec=document.createElement('section');
   sec.className='cat-row';
   sec.dataset.rowKey=title;
+  if(sectionKey) sec.dataset.section=sectionKey;
   sec._items=items;
   sec._shown=0;
 
@@ -1195,7 +1232,9 @@ async function playChannel(c){
         fragLoadingRetryDelay:800
       });
 
-      hls.on(Hls.Events.MEDIA_ATTACHED,()=>hls.loadSource(c.url));
+      // Usar sourceUrl también en HLS permite que el proxy local de Termux
+      // funcione con películas, series y streams HLS.
+      hls.on(Hls.Events.MEDIA_ATTACHED,()=>hls.loadSource(sourceUrl));
       hls.on(Hls.Events.MANIFEST_PARSED,()=>{
         setPlayerStatus('HLS listo. Reproduciendo…');
         vid.play().catch(()=>setPlayerStatus('Pulsa ▶ para iniciar'));
@@ -1438,14 +1477,17 @@ function handleNavAction(section){
   } else if(section==='nuevos'||section==='inicio'){
     window.scrollTo({top:0,behavior:'smooth'});
   } else if(section==='envivo'){
-    const r=[...rows].find(r=>r.dataset.rowKey&&/vivo|live/i.test(r.dataset.rowKey));
-    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('Carga una lista M3U para ver canales en vivo');
+    const r=[...rows].find(r=>r.dataset.section==='envivo') ||
+            [...rows].find(r=>r.dataset.rowKey&&/vivo|live|directo|canales/i.test(r.dataset.rowKey));
+    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('No hay canales en vivo en la lista actual');
   } else if(section==='series'){
-    const r=[...rows].find(r=>r.dataset.rowKey&&/serie|drama/i.test(r.dataset.rowKey));
-    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('No hay series en la lista actual');
+    const r=[...rows].find(r=>r.dataset.section==='series') ||
+            [...rows].find(r=>r.dataset.rowKey&&/serie|series|drama|temporada|season|tv shows/i.test(r.dataset.rowKey));
+    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('No se detectaron series en la lista actual');
   } else if(section==='peliculas'){
-    const r=[...rows].find(r=>r.dataset.rowKey&&/pelíc|movie/i.test(r.dataset.rowKey));
-    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('No hay películas en la lista actual');
+    const r=[...rows].find(r=>r.dataset.section==='peliculas') ||
+            [...rows].find(r=>r.dataset.rowKey&&/pelic|película|movie|movies|cine|film|films|vod/i.test(r.dataset.rowKey));
+    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('No se detectaron películas en la lista actual');
   }
 }
 
