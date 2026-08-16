@@ -593,7 +593,7 @@ img{max-width:100%;display:block}
       <span></span><span></span><span></span>
     </button>
     <div class="nav-logo" onclick="window.scrollTo({top:0,behavior:'smooth'})">
-      DS<sup>DULCINEA</sup>
+      D-SKA<sup>DULCINEA</sup>
     </div>
     <ul class="nav-links" id="navLinks">
       <li><a href="#" class="active" data-nav="inicio">Inicio</a></li>
@@ -834,24 +834,25 @@ function attr(s,k){
 
 function normText(s){
   return String(s||'').toLowerCase()
-    .normalize('NFD').replace(/[\\u0300-\\u036f]/g,'')
-    .replace(/[_|:;,.()[\\]{}\\-]+/g,' ');
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[_|:;,.()[\]{}\-]+/g,' ');
 }
 
+// MEJORA: heurísticas ampliadas para detectar series y películas
 function isSeriesItem(c){
-  const s=normText((c.group||'')+' '+(c.name||''));
-  return /\\b(series|serie|tv series|tv shows|shows|temporada|temporadas|season|seasons|episodio|episodios|episod|seriado|seriados|novela|novelas)\\b/.test(s);
+  const s = normText((c.group||'') + ' ' + (c.name||''));
+  return /\b(series|serie|tv series|tv shows|shows|temporada|temporadas|season|seasons|episodio|episodios|episod|seriado|seriados|novela|novelas|drama|telenovela|mini serie|miniserie|anime)\b/.test(s);
 }
 
 function isMovieItem(c){
   if(isSeriesItem(c)) return false;
-  const s=normText((c.group||'')+' '+(c.name||''));
-  return /\\b(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|premiere|premieres)\\b/.test(s);
+  const s = normText((c.group||'') + ' ' + (c.name||''));
+  return /\b(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largometraje|cortometraje)\b/.test(s);
 }
 
 function isLiveItem(c){
   const s=normText((c.group||'')+' '+(c.name||''));
-  return /\\b(en vivo|envivo|live|directo|canales|channel|channels|tv en vivo)\\b/.test(s);
+  return /\b(en vivo|envivo|live|directo|canales|channel|channels|tv en vivo)\b/.test(s);
 }
 function toast(msg){
   const t=$('#toast'); t.textContent=msg; t.classList.add('show');
@@ -859,27 +860,25 @@ function toast(msg){
 }
 function groupIcon(g){
   g=g.toLowerCase();
-  if(/acción|accion|action/.test(g))return '🔥';
+  if(/acci[óo]n|action/.test(g))return '🔥';
   if(/comed/.test(g))return '😂';
   if(/terror|horror/.test(g))return '👻';
   if(/anime/.test(g))return '⛩️';
   if(/documental/.test(g))return '🎬';
   if(/deporte|sport/.test(g))return '⚽';
   if(/noticias|news/.test(g))return '📰';
-  if(/música|musica|music/.test(g))return '🎵';
-  if(/infantil|niño|kids/.test(g))return '🧸';
+  if(/m[úu]sica|music/.test(g))return '🎵';
+  if(/infantil|ni[ñn]o|kids/.test(g))return '🧸';
   if(/serie|series|drama|temporada|season|tv shows/.test(g))return '📺';
-  if(/película|peliculas|movie|movies|cine|cinema|film|films|vod/.test(g))return '🎥';
+  if(/pel[íi]cula|movie|movies|cine|cinema|film|films|vod/.test(g))return '🎥';
   if(/vivo|live|directo/.test(g))return '📡';
   return '📂';
 }
 
-// ═══════════ M3U PARSER ═══════════
+// ═══════════ M3U PARSER (MEJORA: sin límite de 5 por categoría) ═══════════
 function parseM3U(text){
-  // Parser ligero: conserva SOLO los primeros 5 elementos por categoría.
-  // Esto evita llenar memoria/renderizar miles de URLs de una lista IPTV enorme.
   const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/);
-  const out=[], seen=new Set(), groupCounts=Object.create(null);
+  const out=[], seen=new Set();
   let meta=null;
   for(let i=0;i<lines.length;i++){
     const line=lines[i].trim();
@@ -896,12 +895,10 @@ function parseM3U(text){
     }else if(!line.startsWith('#') && /^(https?|rtmp|rtsp):\/\//i.test(line)){
       if(meta){
         const url=line;
-        const g=meta.group||'Sin categoría';
-        const count=groupCounts[g]||0;
-        if(count<5 && !seen.has(url)){
+        // Solo evitar duplicados exactos por URL
+        if(!seen.has(url)){
           out.push({...meta,url});
           seen.add(url);
-          groupCounts[g]=count+1;
         }
         meta=null;
       }
@@ -968,8 +965,7 @@ function renderRows(){
     cont.appendChild(buildRow('▶ Continuar viendo',recent));
   }
 
-  // Secciones inteligentes: no dependen de que el proveedor use
-  // exactamente "Movies", "Películas", "Series", etc.
+  // Secciones inteligentes: ahora filtran sobre TODOS los canales (sin límite previo)
   const seriesItems=channels.filter(isSeriesItem);
   const movieItems=channels.filter(isMovieItem);
 
@@ -1232,8 +1228,6 @@ async function playChannel(c){
         fragLoadingRetryDelay:800
       });
 
-      // Usar sourceUrl también en HLS permite que el proxy local de Termux
-      // funcione con películas, series y streams HLS.
       hls.on(Hls.Events.MEDIA_ATTACHED,()=>hls.loadSource(sourceUrl));
       hls.on(Hls.Events.MANIFEST_PARSED,()=>{
         setPlayerStatus('HLS listo. Reproduciendo…');
@@ -1254,8 +1248,6 @@ async function playChannel(c){
       });
       hls.attachMedia(vid);
     }else{
-      // MP4/TS/WEBM y HLS nativo: dejamos que el reproductor del sistema
-      // determine el formato. Esto es importante para películas y series.
       setPlayerStatus(isHls?'HLS nativo…':'Abriendo vídeo…');
       vid.src=sourceUrl;
       vid.load();
@@ -1309,7 +1301,7 @@ function jumpToRow(name){
   closeSidebar();
 }
 
-// ═══════════ SEARCH ═══════════
+// ═══════════ SEARCH (MEJORA: sin límite de 24 resultados) ═══════════
 $('#searchToggle').addEventListener('click',openSearch);
 $('#searchClose').addEventListener('click',closeSearch);
 let searchTimer=0;
@@ -1334,15 +1326,15 @@ function runSearch(){
   if(!q){ $('#searchLabel').textContent='Escribe para buscar'; return; }
   const qn=q.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const res=[];
+  // Recorremos todos los canales sin límite
   for(const c of channels){
     const name=(c.name||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
     const grp=(c.group||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
     if(name.includes(qn)||grp.includes(qn)){
       res.push(c);
-      if(res.length>=24) break;
     }
   }
-  $('#searchLabel').textContent=res.length?`${res.length}${res.length===24?' +':''} resultados para "${q}"`:'Sin resultados';
+  $('#searchLabel').textContent=res.length?`${res.length} resultados para "${q}"`:'Sin resultados';
   const frag=document.createDocumentFragment();
   res.forEach(c=>frag.appendChild(buildCard(c)));
   grid.appendChild(frag);
