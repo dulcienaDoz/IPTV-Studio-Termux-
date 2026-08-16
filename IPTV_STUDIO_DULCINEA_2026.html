@@ -573,8 +573,14 @@ const StorageService = (() => {
           d.createObjectStore(STORE_PROFILES, { keyPath: 'id' });
         }
       };
-      req.onsuccess = (ev) => { db = ev.target.result; dbReady = true; resolve(db); };
+      req.onsuccess = (ev) => {
+        db = ev.target.result;
+        dbReady = true;
+        db.onversionchange = () => { db.close(); db = null; dbReady = false; };
+        resolve(db);
+      };
       req.onerror = (ev) => reject(ev.target.error);
+      req.onblocked = () => reject(new Error('La base de datos está ocupada por otra pestaña.'));
     });
   }
 
@@ -655,39 +661,38 @@ const M3UParser = (() => {
 
   // Clasificación avanzada: prioriza tvg-type, luego group-title y nombre
   function classify(channel) {
-    // 1. Usar tvg-type si existe
-    if (channel.tvgType) {
-      const t = channel.tvgType.toLowerCase();
-      if (t === 'series' || t === 'serie') return 'series';
-      if (t === 'movie' || t === 'pelicula') return 'pelicula';
-      if (t === 'live' || t === 'radio' || t === 'tv' || t === 'tvshow') return 'envivo';
-    }
+    // 1. tvg-type tiene prioridad porque es metadato explícito de la M3U.
+    const t = normalize(channel.tvgType || '').trim();
+    if (/^(series|serie|tvshow|tv shows|show|episodic)$/.test(t)) return 'series';
+    if (/^(movie|movies|pelicula|peliculas|vod|film|films)$/.test(t)) return 'pelicula';
+    if (/^(live|radio|tv|tvshow|tv live|linear|stream)$/.test(t)) return 'envivo';
 
-    // 2. Heurísticas sobre group + name
+    // 2. Heurísticas sobre grupo + nombre. Se evalúan primero señales muy fuertes.
     const combined = normalize((channel.group || '') + ' ' + (channel.name || ''));
-    
-    // Series: temporadas, episodios, etc.
-    if (/\b(series|serie|tv series|tv shows|shows|temporada|temporadas|season|seasons|episodio|episodios|episod|seriado|seriados|novela|novelas|drama|telenovela|mini serie|miniserie|anime)\b/.test(combined)) {
+
+    // Series: temporadas, episodios, numeración S01/E01, etc.
+    if (/(\bs\d{1,2}\s*e\d{1,3}\b|\bseason\s*\d+\b|\btemporada\s*\d+\b|\bepisod(?:io|ios)?\b|\b(?:series|serie|tv series|tv shows|shows|seriado|seriados|telenovela|novelas|mini serie|miniserie|anime)\b)/.test(combined)) {
       return 'series';
     }
-    
-    // Películas
-    if (/\b(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largo|largometraje|corto|cortometraje)\b/.test(combined)) {
+
+    // Películas/VOD. "VOD" se considera película cuando no hay una señal de serie.
+    if (/\b(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largometraje|cortometraje)\b/.test(combined)) {
       return 'pelicula';
     }
-    
-    // En vivo
-    if (/\b(en vivo|envivo|live|directo|canales|channel|channels|tv en vivo|streaming|stream|radio|tv live|live tv|en directo)\b/.test(combined)) {
+
+    // En vivo.
+    if (/\b(en vivo|envivo|live|directo|canales|channel|channels|tv en vivo|streaming|stream|radio|tv live|live tv|en directo|news|noticias|deportes|sports)\b/.test(combined)) {
       return 'envivo';
     }
-    
+
     return 'general';
   }
 
   function parse(text) {
     const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
     const out = [];
-    const seen = new Set();
+    // No deduplicamos por URL: una M3U puede contener varios canales válidos
+    // que comparten el mismo endpoint pero tienen nombres/grupos diferentes.
     let meta = null;
 
     for (const raw of lines) {
@@ -710,12 +715,9 @@ const M3UParser = (() => {
       } else if (!line.startsWith('#') && /^(https?|rtmp|rtsp):\/\//i.test(line)) {
         if (meta) {
           const url = line;
-          if (!seen.has(url)) {
-            // Clasificar automáticamente
-            const tipo = classify(meta);
-            out.push({ ...meta, url, _type: tipo });
-            seen.add(url);
-          }
+          // Conservar cada entrada EXTINF, incluso cuando la URL se repite.
+          const tipo = classify(meta);
+          out.push({ ...meta, url, _type: tipo });
           meta = null;
         }
       }
@@ -860,12 +862,15 @@ const App = (() => {
   let channels = [];
   let groups = {};
   let favorites = [];
-  let currentListMeta = { id: null, name: '', url: '', method: '', updatedAt: 0 };
+  let currentListMeta = { id: null, name: '', url: '', method: '', proxy: '', updatedAt: 0 };
   let activeProfile = { name: 'Usuario 1', emoji: '🎭', bg: 'linear-gradient(135deg,#E50914,#8b0000)' };
   let curChannel = null;
   let rowObserver = null;
   let allRowsData = [];
   let lastFocusedElement = null;
+  let searchResults = [];
+  let searchShown = 0;
+  const SEARCH_PAGE_SIZE = 20;
 
   // DOM refs
   const $ = (s) => document.querySelector(s);
@@ -1400,25 +1405,61 @@ const App = (() => {
     $('#searchOverlay').classList.remove('open');
     $('#searchInput').value = '';
     $('#searchGrid').innerHTML = '';
+    searchResults = [];
+    searchShown = 0;
     $('#searchLabel').textContent = 'Escribe para buscar';
   }
 
-  function runSearch(query) {
+  function renderSearchResults() {
     const grid = $('#searchGrid');
     grid.innerHTML = '';
-    if (!query) { $('#searchLabel').textContent = 'Escribe para buscar'; return; }
-    const qn = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const results = [];
-    for (const c of channels) {
-      const name = (c.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const grp = (c.group || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (name.includes(qn) || grp.includes(qn)) results.push(c);
+    if (!searchResults.length) {
+      $('#searchLabel').textContent = 'Sin resultados';
+      return;
     }
-    $('#searchLabel').textContent = results.length ? `${results.length} resultados` : 'Sin resultados';
+
+    const end = Math.min(searchShown + SEARCH_PAGE_SIZE, searchResults.length);
     const frag = document.createDocumentFragment();
-    results.forEach(c => frag.appendChild(buildCard(c)));
+    for (let i = searchShown; i < end; i++) {
+      frag.appendChild(buildCard(searchResults[i]));
+    }
     grid.appendChild(frag);
+    searchShown = end;
+
+    $('#searchLabel').textContent = searchResults.length > end
+      ? `${end} de ${searchResults.length} resultados`
+      : `${searchResults.length} resultados`;
+
+    if (end < searchResults.length) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'row-more';
+      more.style.cssText = 'grid-column:1/-1;min-height:48px;margin:8px 0 24px;';
+      more.textContent = `＋ Mostrar ${Math.min(SEARCH_PAGE_SIZE, searchResults.length - end)} más`;
+      more.addEventListener('click', () => renderSearchResults());
+      grid.appendChild(more);
+    }
   }
+
+  function runSearch(query) {
+    const qn = normalize(query).trim();
+    searchResults = [];
+    searchShown = 0;
+    $('#searchGrid').innerHTML = '';
+    if (!qn) {
+      $('#searchLabel').textContent = 'Escribe para buscar';
+      return;
+    }
+
+    // Buscar en TODA la lista, pero renderizar solo bloques pequeños.
+    for (const c of channels) {
+      const name = normalize(c.name || '');
+      const grp = normalize(c.group || '');
+      if (name.includes(qn) || grp.includes(qn)) searchResults.push(c);
+    }
+    renderSearchResults();
+  }
+
 
   // ── Inicialización ──
   async function init() {
@@ -1439,7 +1480,7 @@ const App = (() => {
       if (lastId) {
         const list = await StorageService.getList(lastId);
         if (list && Array.isArray(list.channels) && list.channels.length) {
-          currentListMeta = { id: list.id, name: list.name, url: list.url, method: list.method, updatedAt: list.updatedAt };
+          currentListMeta = { id: list.id, name: list.name, url: list.url, method: list.method, proxy: list.proxy || '', updatedAt: list.updatedAt };
           // Asegurar que cada canal tenga _type
           const withTypes = list.channels.map(c => {
             if (!c._type) c._type = M3UParser.classify(c);
@@ -1477,7 +1518,7 @@ const App = (() => {
         const text = await f.text();
         const items = M3UParser.parse(text);
         if (!items.length) throw new Error('No se encontraron entradas M3U válidas.');
-        currentListMeta = { id: null, name: f.name.replace(/\.(m3u8?|txt)$/i, '') || 'Lista local', url: '', method: 'archivo', updatedAt: Date.now() };
+        currentListMeta = { id: null, name: f.name.replace(/\.(m3u8?|txt)$/i, '') || 'Lista local', url: '', method: 'archivo', proxy: '', updatedAt: Date.now() };
         $('#listNameInput').value = currentListMeta.name;
         setChannels(items);
         setDStatus(`Lista cargada: ${items.length} elementos.`, 'ok');
@@ -1507,7 +1548,7 @@ const App = (() => {
               const text = await resp.text();
               const items = M3UParser.parse(text);
               if (items.length) {
-                currentListMeta = { id: null, name: $('#listNameInput').value.trim() || 'Mi lista IPTV', url: u, method: 'Termux local', updatedAt: Date.now() };
+                currentListMeta = { id: null, name: $('#listNameInput').value.trim() || 'Mi lista IPTV', url: u, method: 'Termux local', proxy: '', updatedAt: Date.now() };
                 setChannels(items);
                 setDStatus(`Cargado (Termux): ${items.length} elementos.`, 'ok');
                 setTimeout(closeDrawer, 900);
@@ -1523,7 +1564,7 @@ const App = (() => {
         const items = M3UParser.parse(text);
         if (!items.length) throw new Error('No se encontraron entradas M3U válidas.');
         const autoName = new URL(u).hostname.replace(/^www\./, '');
-        currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || 'Mi lista IPTV', url: u, method: method === 'proxy' ? 'proxy' : 'directo', updatedAt: Date.now() };
+        currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || 'Mi lista IPTV', url: u, method: method === 'proxy' ? 'proxy' : 'directo', proxy: method === 'proxy' ? proxy : '', updatedAt: Date.now() };
         $('#listNameInput').value = currentListMeta.name;
         setChannels(items);
         setDStatus(`Cargado (${currentListMeta.method}): ${items.length} elementos.`, 'ok');
@@ -1544,6 +1585,7 @@ const App = (() => {
           id, name,
           url: currentListMeta.url || '',
           method: currentListMeta.method || '',
+          proxy: currentListMeta.proxy || '',
           updatedAt: Date.now(),
           channels: channels.map(c => ({
             name: c.name, group: c.group, logo: c.logo, id: c.id, url: c.url, tvgType: c.tvgType, _type: c._type
@@ -1572,7 +1614,7 @@ const App = (() => {
           if (!c._type) c._type = M3UParser.classify(c);
           return c;
         });
-        currentListMeta = { id: item.id, name: item.name, url: item.url, method: item.method, updatedAt: item.updatedAt };
+        currentListMeta = { id: item.id, name: item.name, url: item.url, method: item.method, proxy: item.proxy || '', updatedAt: item.updatedAt };
         localStorage.setItem('ds_last_saved_list', item.id);
         $('#listNameInput').value = currentListMeta.name;
         setChannels(withTypes);
@@ -1580,6 +1622,38 @@ const App = (() => {
         setTimeout(closeDrawer, 700);
       } catch (err) { setDStatus('Error al abrir: ' + err.message, 'err'); }
     });
+
+    // Obtiene una M3U usando la misma estrategia de carga: Termux local primero
+    // cuando está disponible y después proxy/directo como respaldo.
+    async function fetchPlaylistText(sourceUrl, method = 'auto', proxyUrl = '') {
+      const errors = [];
+      const tryFetch = async (label, url, timeout = 15000) => {
+        try {
+          const resp = await fetch(url, { signal: AbortSignal.timeout(timeout), cache: 'no-store' });
+          if (!resp.ok) throw new Error(`${label}: HTTP ${resp.status}`);
+          const text = await resp.text();
+          const items = M3UParser.parse(text);
+          if (!items.length) throw new Error(`${label}: no contiene entradas M3U válidas`);
+          return { text, items, method: label };
+        } catch (e) {
+          errors.push(e?.message || String(e));
+          return null;
+        }
+      };
+
+      if (method === 'auto' || method === 'Termux local' || method === 'termux') {
+        const local = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 5000);
+        if (local) return local;
+      }
+      if ((method === 'proxy' || proxyUrl) && proxyUrl) {
+        const sep = proxyUrl.includes('?') ? '&' : '?';
+        const proxied = await tryFetch('proxy', proxyUrl + sep + 'url=' + encodeURIComponent(sourceUrl));
+        if (proxied) return proxied;
+      }
+      const direct = await tryFetch('directo', sourceUrl);
+      if (direct) return direct;
+      throw new Error(errors.join(' · ') || 'No se pudo descargar la lista.');
+    }
 
     $('#updateSavedBtn').addEventListener('click', async () => {
       const id = $('#savedListsSelect').value || currentListMeta.id;
@@ -1590,21 +1664,19 @@ const App = (() => {
         const sourceUrl = saved.url || currentListMeta.url;
         if (!sourceUrl) { toast('Esta lista no tiene URL para actualizar.', 'error'); return; }
         setDStatus('🔄 Actualizando...', '');
-        const resp = await fetch(sourceUrl, { signal: AbortSignal.timeout(15000) });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const text = await resp.text();
-        const fresh = M3UParser.parse(text);
-        if (!fresh.length) throw new Error('No se encontraron entradas M3U válidas.');
+        const loaded = await fetchPlaylistText(sourceUrl, saved.method || 'auto', saved.proxy || currentListMeta.proxy || '');
+        const fresh = loaded.items;
         const updated = {
           id: saved.id,
           name: saved.name || 'Mi lista IPTV',
           url: sourceUrl,
-          method: saved.method || 'actualizada',
+          method: loaded.method || saved.method || 'actualizada',
+          proxy: saved.proxy || currentListMeta.proxy || '',
           updatedAt: Date.now(),
           channels: fresh.map(c => ({ name: c.name, group: c.group, logo: c.logo, id: c.id, url: c.url, tvgType: c.tvgType, _type: c._type }))
         };
         await StorageService.saveList(updated);
-        currentListMeta = { id: updated.id, name: updated.name, url: updated.url, method: updated.method, updatedAt: updated.updatedAt };
+        currentListMeta = { id: updated.id, name: updated.name, url: updated.url, method: updated.method, proxy: updated.proxy || '', updatedAt: updated.updatedAt };
         localStorage.setItem('ds_last_saved_list', updated.id);
         $('#listNameInput').value = updated.name;
         setChannels(fresh);
@@ -1776,6 +1848,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     if (!sel) return;
     try {
       const lists = await StorageService.getAllLists();
+      lists.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
       sel.innerHTML = '<option value="">— Selecciona una lista guardada —</option>';
       for (const item of lists) {
         const opt = document.createElement('option');
