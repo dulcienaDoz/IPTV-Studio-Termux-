@@ -367,7 +367,7 @@ ul { list-style: none; }
       <span></span><span></span><span></span>
     </button>
     <div class="nav-logo" onclick="window.scrollTo({top:0,behavior:'smooth'})" role="button" tabindex="0" aria-label="Ir al inicio">
-      TMX-D-SKA<sup>DULCINEA</sup>
+      TMX/SKA<sup>DULCINEA</sup>
     </div>
     <ul class="nav-links" id="navLinks" role="list">
       <li><a href="#" class="active" data-nav="inicio" role="link">Inicio</a></li>
@@ -732,29 +732,35 @@ const M3UParser = (() => {
   }
 
   function classify(channel) {
-    const t = normalize(channel.tvgType || '').trim();
+    const t = normalize(channel.tvgType || '');
     if (/^(series|serie|tvshow|tv shows|show|episodic)$/.test(t)) return 'series';
-    if (/^(movie|movies|pelicula|peliculas|vod|film|films)$/.test(t)) return 'pelicula';
-    if (/^(live|radio|tv|tvshow|tv live|linear|stream)$/.test(t)) return 'envivo';
+    if (/^(movie|movies|pelicula|peliculas|vod|film|films|filme|filmes)$/.test(t)) return 'pelicula';
+    if (/^(live|radio|tv|tvshow|tv live|linear|stream|live tv)$/.test(t)) return 'envivo';
 
-    const combined = normalize((channel.group || '') + ' ' + (channel.name || ''));
+    const combined = normalize(
+      `${channel.group || ''} ${channel.name || ''} ${channel.id || ''}`
+    );
 
-    if (/(s\d{1,2}\s*e\d{1,3}|season\s*\d+|temporada\s*\d+|episod(?:io|ios)?|(?:series|serie|tv series|tv shows|shows|seriado|seriados|telenovela|novelas|mini serie|miniserie|anime))/.test(combined)) {
+    // Series
+    if (/(^|\\s)(s\\d{1,2}\\s*e\\d{1,3}|season\\s*\\d+|temporada\\s*\\d+|episod(?:io|ios)?|series|serie|tv series|tv shows|shows|seriado|seriados|telenovela|novelas|miniserie|mini serie|anime)(\\s|$)/.test(combined)) {
       return 'series';
     }
-    if (/(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largometraje|cortometraje)/.test(combined)) {
+
+    // Películas / VOD
+    if (/(^|\\s)(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largometraje|cortometraje)(\\s|$)/.test(combined)) {
       return 'pelicula';
     }
-    if (/(en vivo|envivo|live|directo|canales|channel|channels|tv en vivo|streaming|stream|radio|tv live|live tv|en directo|news|noticias|deportes|sports)/.test(combined)) {
+
+    // TV en vivo
+    if (/(^|\\s)(en vivo|envivo|live|directo|canales|canal|channel|channels|tv en vivo|streaming|stream|radio|tv live|live tv|en directo|news|noticias|deportes|sports)(\\s|$)/.test(combined)) {
       return 'envivo';
     }
+
     return 'general';
   }
 
   function parse(text) {
-    const lines = text.replace(/^﻿/, '').split(/
-?
-/);
+    const lines = text.replace(/^\ufeff/, '').split(/\r?\n/);
     const out = [];
     let meta = null;
 
@@ -799,7 +805,7 @@ const PlayerService = (() => {
 
   function isHlsUrl(url) {
     return /\.m3u8(?:$|[?#])/i.test(url) ||
-           /[?&](?:type|format|output)=m3u8/i.test(url) ||
+           /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
            /\/(?:hls|hls_live)\//i.test(url);
   }
 
@@ -989,7 +995,10 @@ const App = (() => {
 
   // ── Carga de lista ──
   function setChannels(items, opts = {}) {
-    channels = Array.isArray(items) ? items : [];
+    channels = (Array.isArray(items) ? items : []).map(c => ({
+      ...c,
+      _type: M3UParser.classify(c)
+    }));
     groups = {};
     for (const c of channels) {
       const g = c.group || 'Sin categoría';
@@ -1439,6 +1448,7 @@ const App = (() => {
 
   function renderSearchResults() {
     const grid = $('#searchGrid');
+    grid.querySelectorAll('.search-more-btn').forEach(el => el.remove());
     if (!searchShown) grid.innerHTML = '';
     if (!searchResults.length) {
       $('#searchLabel').textContent = 'Sin resultados';
@@ -1460,7 +1470,7 @@ const App = (() => {
     if (end < searchResults.length) {
       const more = document.createElement('button');
       more.type = 'button';
-      more.className = 'row-more';
+      more.className = 'row-more search-more-btn';
       more.style.cssText = 'grid-column:1/-1;min-height:48px;margin:8px 0 24px;';
       more.textContent = `＋ Mostrar ${Math.min(SEARCH_PAGE_SIZE, searchResults.length - end)} más`;
       more.addEventListener('click', () => renderSearchResults());
@@ -1484,7 +1494,14 @@ const App = (() => {
         const grp = normalizeSearch(c.group || '');
         const id = normalizeSearch(c.id || '');
         const type = normalizeSearch(c.tvgType || '');
-        if (name.includes(qn) || grp.includes(qn) || id.includes(qn) || type.includes(qn)) {
+        const url = normalizeSearch(c.url || '');
+        if (
+          name.includes(qn) ||
+          grp.includes(qn) ||
+          id.includes(qn) ||
+          type.includes(qn) ||
+          url.includes(qn)
+        ) {
           searchResults.push(c);
         }
       }
@@ -1514,7 +1531,7 @@ const App = (() => {
         if (list && Array.isArray(list.channels) && list.channels.length) {
           currentListMeta = { id: list.id, name: list.name, url: list.url, method: list.method, proxy: list.proxy || '', updatedAt: list.updatedAt };
           const withTypes = list.channels.map(c => {
-            if (!c._type) c._type = M3UParser.classify(c);
+            c._type = M3UParser.classify(c);
             return c;
           });
           setChannels(withTypes, { silent: true });
@@ -1643,7 +1660,7 @@ const App = (() => {
           return;
         }
         const withTypes = item.channels.map(c => {
-          if (!c._type) c._type = M3UParser.classify(c);
+          c._type = M3UParser.classify(c);
           return c;
         });
         currentListMeta = { id: item.id, name: item.name, url: item.url, method: item.method, proxy: item.proxy || '', updatedAt: item.updatedAt };
