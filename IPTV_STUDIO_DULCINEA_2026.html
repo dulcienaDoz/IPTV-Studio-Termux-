@@ -593,7 +593,7 @@ img{max-width:100%;display:block}
       <span></span><span></span><span></span>
     </button>
     <div class="nav-logo" onclick="window.scrollTo({top:0,behavior:'smooth'})">
-      D-SKA<sup>DULCINEA</sup>
+      TMX-D-SKA<sup>DULCINEA</sup>
     </div>
     <ul class="nav-links" id="navLinks">
       <li><a href="#" class="active" data-nav="inicio">Inicio</a></li>
@@ -1138,6 +1138,7 @@ function openDetail(c){
 
   $('#modalBg').classList.add('open');
   document.body.style.overflow='hidden';
+  pushHistoryState({ modal: true });
 }
 function closeDetail(){
   $('#modalBg').classList.remove('open');
@@ -1203,6 +1204,7 @@ async function playChannel(c){
     const sourceUrl=await playbackUrl(c.url);
     $('#playerFs').classList.add('open');
     document.body.style.overflow='hidden';
+    pushHistoryState({ player: true });
 
     const onPlaying=()=>setPlayerStatus(isHls?'HLS conectado':'Reproduciendo','ok');
     const onWaiting=()=>setPlayerStatus('Cargando…');
@@ -1313,6 +1315,7 @@ $('#searchInput').addEventListener('input',()=>{
 function openSearch(){
   $('#searchOverlay').classList.add('open');
   setTimeout(()=>$('#searchInput').focus(),80);
+  pushHistoryState({ search: true });
 }
 function closeSearch(){
   $('#searchOverlay').classList.remove('open');
@@ -1326,7 +1329,6 @@ function runSearch(){
   if(!q){ $('#searchLabel').textContent='Escribe para buscar'; return; }
   const qn=q.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const res=[];
-  // Recorremos todos los canales sin límite
   for(const c of channels){
     const name=(c.name||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
     const grp=(c.group||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -1345,6 +1347,7 @@ function openDrawer(){
   $('#drawerBg').classList.add('open');
   $('#drawer').classList.add('open');
   document.body.style.overflow='hidden';
+  pushHistoryState({ drawer: true });
 }
 function closeDrawer(){
   $('#drawerBg').classList.remove('open');
@@ -1440,7 +1443,10 @@ function setDStatus(msg,type=''){
 }
 
 // ═══════════ PROFILES ═══════════
-function openProfiles(){ $('#profilesScreen').classList.add('open'); }
+function openProfiles(){ 
+  $('#profilesScreen').classList.add('open');
+  pushHistoryState({ profiles: true });
+}
 function closeProfiles(){ $('#profilesScreen').classList.remove('open'); }
 function switchProfile(name,emoji,bg){
   activeProfile={name,emoji,bg};
@@ -1454,6 +1460,38 @@ function switchProfile(name,emoji,bg){
   $('#activePic').style.background=activeProfile.bg||'linear-gradient(135deg,#E50914,#8b0000)';
   $('#activePic').textContent=activeProfile.emoji||'🎭';
 })();
+
+// ═══════════ MANEJO DEL HISTORIAL (evita que "Atrás" cierre la página) ═══════════
+let historyLock = false;
+
+function pushHistoryState(state) {
+  if (!historyLock) {
+    historyLock = true;
+    history.pushState(state || { modal: true }, '');
+    setTimeout(() => { historyLock = false; }, 100);
+  }
+}
+
+window.addEventListener('popstate', (e) => {
+  const isOpen = 
+    $('#modalBg').classList.contains('open') ||
+    $('#playerFs').classList.contains('open') ||
+    $('#searchOverlay').classList.contains('open') ||
+    $('#drawer').classList.contains('open') ||
+    $('#profilesScreen').classList.contains('open');
+
+  if (isOpen) {
+    closeDetail();
+    stopPlayer();
+    closeSearch();
+    closeDrawer();
+    closeProfiles();
+    history.replaceState({ modal: false }, '');
+    e.preventDefault();
+  } else {
+    // Si no hay nada abierto, permite la navegación normal
+  }
+});
 
 // ═══════════ SCROLL NAV ═══════════
 window.addEventListener('scroll',()=>{
