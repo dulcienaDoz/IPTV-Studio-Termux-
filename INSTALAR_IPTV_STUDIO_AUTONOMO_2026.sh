@@ -2,137 +2,162 @@
 set -e
 
 APP_DIR="$HOME/iptv-studio"
+
 HTML_FILE="$APP_DIR/IPTV_STUDIO_DULCINEA_2026.html"
 SERVER_FILE="$APP_DIR/iptv_termux_server.py"
 
 HTML_URL="https://raw.githubusercontent.com/dulcienaDoz/IPTV-Studio-Termux-/refs/heads/main/IPTV_STUDIO_DULCINEA_2026.html"
 SERVER_URL="https://raw.githubusercontent.com/dulcienaDoz/IPTV-Studio-Termux-/refs/heads/main/iptv_termux_server.py"
 
-TMP_HTML="$APP_DIR/.IPTV_STUDIO_NUEVO.html"
-TMP_SERVER="$APP_DIR/.iptv_termux_server_nuevo.py"
+PORT=8765
+LOCAL_URL="http://127.0.0.1:$PORT/"
 
+echo ""
 echo "=============================================="
-echo "      IPTV STUDIO DULCINEA 2026"
-echo "      INSTALADOR / ACTUALIZADOR"
+echo "     IPTV STUDIO DULCINEA 2026"
+echo "     INSTALADOR / ACTUALIZADOR UNIVERSAL"
 echo "=============================================="
-echo
+echo ""
 
-echo "[1/7] Preparando Termux..."
-pkg update -y
-pkg install -y python curl
+echo "[1/6] Preparando Termux..."
+
+pkg update -y >/dev/null 2>&1 || true
+pkg install curl python -y >/dev/null 2>&1
 
 mkdir -p "$APP_DIR"
 
-echo
-echo "[2/7] Descargando HTML actualizado..."
+echo "✓ Dependencias listas"
+echo ""
 
-rm -f "$TMP_HTML"
-
-HTML_URL_CACHE="${HTML_URL}?v=$(date +%s)"
-
-if ! curl -fL --retry 3 --connect-timeout 15 --max-time 120 \
-    "$HTML_URL_CACHE" -o "$TMP_HTML"; then
-    echo
-    echo "❌ No se pudo descargar el HTML."
-    rm -f "$TMP_HTML"
-    exit 1
-fi
-
-echo "✓ HTML descargado."
-
-if [ ! -s "$TMP_HTML" ]; then
-    echo "❌ El archivo descargado está vacío."
-    rm -f "$TMP_HTML"
-    exit 1
-fi
-
-if ! grep -qi '<!doctype html\|<html' "$TMP_HTML"; then
-    echo "❌ La descarga no parece ser un HTML válido."
-    rm -f "$TMP_HTML"
-    exit 1
-fi
-
-NEW_SIZE=$(wc -c < "$TMP_HTML")
-echo "✓ HTML válido: ${NEW_SIZE} bytes"
-
-echo
-echo "[3/7] Descargando servidor actualizado..."
-
-rm -f "$TMP_SERVER"
-
-SERVER_URL_CACHE="${SERVER_URL}?v=$(date +%s)"
-
-if ! curl -fL --retry 3 --connect-timeout 15 --max-time 120 \
-    "$SERVER_URL_CACHE" -o "$TMP_SERVER"; then
-    echo "❌ No se pudo descargar el servidor."
-    rm -f "$TMP_HTML" "$TMP_SERVER"
-    exit 1
-fi
-
-if [ ! -s "$TMP_SERVER" ]; then
-    echo "❌ El servidor descargado está vacío."
-    rm -f "$TMP_HTML" "$TMP_SERVER"
-    exit 1
-fi
-
-echo "✓ Servidor descargado."
-
-echo
-echo "[4/7] Deteniendo versión anterior..."
+echo "[2/6] Deteniendo versión anterior..."
 
 if [ -f "$APP_DIR/detener_iptv.sh" ]; then
-    chmod +x "$APP_DIR/detener_iptv.sh"
-    "$APP_DIR/detener_iptv.sh" || true
+    chmod +x "$APP_DIR/detener_iptv.sh" 2>/dev/null || true
+    "$APP_DIR/detener_iptv.sh" 2>/dev/null || true
 fi
 
 pkill -f "iptv_termux_server.py" 2>/dev/null || true
+
 sleep 1
 
-echo "✓ Versión anterior detenida."
+echo "✓ Versión anterior detenida"
+echo ""
 
-echo
-echo "[5/7] Instalando archivos nuevos..."
+echo "[3/6] Descargando HTML actualizado desde GitHub..."
 
-# Copia de seguridad temporal del HTML anterior
-if [ -f "$HTML_FILE" ]; then
-    cp "$HTML_FILE" "$APP_DIR/.html_anterior"
+TMP_HTML="$APP_DIR/.IPTV_STUDIO_NUEVO.html"
+
+rm -f "$TMP_HTML"
+
+if ! curl -fL \
+    --retry 3 \
+    --connect-timeout 15 \
+    --max-time 180 \
+    -H "Cache-Control: no-cache" \
+    "${HTML_URL}?v=$(date +%s)" \
+    -o "$TMP_HTML"; then
+
+    echo ""
+    echo "✗ ERROR: No se pudo descargar el HTML."
+    rm -f "$TMP_HTML"
+    exit 1
 fi
 
-# El servidor nuevo
-mv "$TMP_SERVER" "$SERVER_FILE"
+if [ ! -s "$TMP_HTML" ]; then
+    echo "✗ ERROR: El HTML descargado está vacío."
+    rm -f "$TMP_HTML"
+    exit 1
+fi
 
-# El HTML nuevo
-mv "$TMP_HTML" "$HTML_FILE"
+if ! grep -qi "<html" "$TMP_HTML"; then
+    echo "✗ ERROR: El archivo descargado no parece ser HTML válido."
+    rm -f "$TMP_HTML"
+    exit 1
+fi
 
-echo "✓ HTML anterior reemplazado."
-echo "✓ Servidor actualizado."
+HTML_SIZE=$(wc -c < "$TMP_HTML")
 
-echo
-echo "[6/7] Creando controles de IPTV Studio..."
+echo "✓ HTML recibido: ${HTML_SIZE} bytes"
+echo ""
+
+echo "[4/6] Reemplazando HTML anterior..."
+
+# Solo reemplazamos el HTML DESPUÉS de comprobar que el nuevo funciona.
+mv -f "$TMP_HTML" "$HTML_FILE"
+
+echo "✓ HTML anterior eliminado"
+echo "✓ HTML nuevo instalado"
+echo ""
+
+echo "[5/6] Comprobando servidor..."
+
+# Si existe el servidor del proyecto, se conserva.
+# Solo se descarga si no existe.
+if [ ! -s "$SERVER_FILE" ]; then
+
+    echo "Descargando servidor desde GitHub..."
+
+    TMP_SERVER="$APP_DIR/.iptv_termux_server.py"
+
+    rm -f "$TMP_SERVER"
+
+    if curl -fL \
+        --retry 3 \
+        --connect-timeout 15 \
+        --max-time 120 \
+        -H "Cache-Control: no-cache" \
+        "${SERVER_URL}?v=$(date +%s)" \
+        -o "$TMP_SERVER"; then
+
+        if [ -s "$TMP_SERVER" ]; then
+            mv -f "$TMP_SERVER" "$SERVER_FILE"
+            echo "✓ Servidor instalado"
+        else
+            rm -f "$TMP_SERVER"
+            echo "✗ El servidor descargado está vacío."
+            exit 1
+        fi
+    else
+        rm -f "$TMP_SERVER"
+        echo "✗ No se pudo descargar el servidor."
+        exit 1
+    fi
+else
+    echo "✓ Servidor existente conservado"
+fi
+
+echo ""
+
+echo "[6/6] Iniciando IPTV Studio..."
 
 cat > "$APP_DIR/iniciar_iptv.sh" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 
 APP_DIR="$HOME/iptv-studio"
+PORT=8765
+URL="http://127.0.0.1:$PORT/"
+
 cd "$APP_DIR"
 
-if curl -s --max-time 2 http://127.0.0.1:8765/ >/dev/null 2>&1; then
-    echo "✓ IPTV Studio ya está ejecutándose."
-    echo "  http://127.0.0.1:8765/"
-    exit 0
-fi
-
-nohup python "$APP_DIR/iptv_termux_server.py" \
-    > "$APP_DIR/iptv_server.log" 2>&1 &
-
+# Evitar servidores duplicados
+pkill -f "iptv_termux_server.py" 2>/dev/null || true
 sleep 1
 
-if curl -s --max-time 3 http://127.0.0.1:8765/ >/dev/null 2>&1; then
-    echo "✓ IPTV Studio activo: http://127.0.0.1:8765/"
+nohup python "$APP_DIR/iptv_termux_server.py" \
+    > "$APP_DIR/servidor.log" 2>&1 &
+
+sleep 2
+
+if curl -fsS --max-time 5 "$URL" >/dev/null 2>&1; then
+    echo ""
+    echo "✓ IPTV Studio está EJECUTÁNDOSE."
+    echo "  $URL"
 else
-    echo "❌ IPTV Studio no pudo iniciarse."
-    echo "Revisa:"
-    echo "  $APP_DIR/iptv_server.log"
+    echo ""
+    echo "✗ El servidor no respondió."
+    echo ""
+    echo "Últimas líneas del registro:"
+    tail -30 "$APP_DIR/servidor.log" 2>/dev/null || true
     exit 1
 fi
 EOF
@@ -142,44 +167,95 @@ cat > "$APP_DIR/detener_iptv.sh" <<'EOF'
 
 pkill -f "iptv_termux_server.py" 2>/dev/null || true
 
-echo "IPTV Studio detenido."
+echo "✓ IPTV Studio detenido."
 EOF
 
-cat > "$APP_DIR/estado_iptv.sh" <<'EOF'
+cat > "$APP_DIR/actualizar_iptv.sh" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 
-if curl -s --max-time 2 http://127.0.0.1:8765/ >/dev/null 2>&1; then
-    echo "✓ IPTV Studio está EJECUTÁNDOSE."
-    echo "  http://127.0.0.1:8765/"
-else
-    echo "❌ IPTV Studio está detenido."
+set -e
+
+APP_DIR="$HOME/iptv-studio"
+HTML_FILE="$APP_DIR/IPTV_STUDIO_DULCINEA_2026.html"
+HTML_URL="https://raw.githubusercontent.com/dulcienaDoz/IPTV-Studio-Termux-/refs/heads/main/IPTV_STUDIO_DULCINEA_2026.html"
+
+TMP_HTML="$APP_DIR/.IPTV_STUDIO_NUEVO.html"
+
+echo ""
+echo "=============================================="
+echo "       ACTUALIZANDO IPTV STUDIO"
+echo "=============================================="
+echo ""
+
+rm -f "$TMP_HTML"
+
+echo "Descargando HTML nuevo..."
+
+curl -fL \
+    --retry 3 \
+    --connect-timeout 15 \
+    --max-time 180 \
+    -H "Cache-Control: no-cache" \
+    "${HTML_URL}?v=$(date +%s)" \
+    -o "$TMP_HTML"
+
+if [ ! -s "$TMP_HTML" ]; then
+    echo "✗ Descarga vacía."
+    rm -f "$TMP_HTML"
+    exit 1
+fi
+
+if ! grep -qi "<html" "$TMP_HTML"; then
+    echo "✗ El archivo descargado no es HTML válido."
+    rm -f "$TMP_HTML"
+    exit 1
+fi
+
+SIZE=$(wc -c < "$TMP_HTML")
+
+# Reemplazo atómico
+mv -f "$TMP_HTML" "$HTML_FILE"
+
+echo ""
+echo "✓ ACTUALIZACIÓN COMPLETADA"
+echo "✓ HTML nuevo: $SIZE bytes"
+echo ""
+
+"$APP_DIR/detener_iptv.sh" 2>/dev/null || true
+sleep 1
+"$APP_DIR/iniciar_iptv.sh"
+
+echo ""
+echo "URL:"
+echo "http://127.0.0.1:8765/"
+echo ""
+
+# Intentar abrir Chrome/Android
+if command -v am >/dev/null 2>&1; then
+    am start \
+      -a android.intent.action.VIEW \
+      -d "http://127.0.0.1:8765/?v=$(date +%s)" \
+      >/dev/null 2>&1 || true
 fi
 EOF
 
-chmod +x \
-    "$APP_DIR/iniciar_iptv.sh" \
-    "$APP_DIR/detener_iptv.sh" \
-    "$APP_DIR/estado_iptv.sh"
-
-echo
-echo "[7/7] Iniciando IPTV Studio..."
+chmod +x "$APP_DIR/iniciar_iptv.sh"
+chmod +x "$APP_DIR/detener_iptv.sh"
+chmod +x "$APP_DIR/actualizar_iptv.sh"
 
 "$APP_DIR/iniciar_iptv.sh"
 
-echo
+echo ""
 echo "=============================================="
-echo "       ✓ INSTALACIÓN/ACTUALIZACIÓN OK"
+echo "       ✓ INSTALACIÓN / ACTUALIZACIÓN OK"
 echo "=============================================="
-echo
-echo "HTML instalado:"
-echo "  $HTML_FILE"
-echo
-echo "Tamaño:"
-wc -c "$HTML_FILE"
-echo
-echo "Servidor:"
-echo "  http://127.0.0.1:8765/"
-echo
-echo "Para comprobar:"
-echo "  ~/iptv-studio/estado_iptv.sh"
-echo
+echo ""
+echo "Carpeta:"
+echo "$APP_DIR"
+echo ""
+echo "Abrir:"
+echo "$LOCAL_URL"
+echo ""
+echo "Actualizar HTML posteriormente:"
+echo "~/iptv-studio/actualizar_iptv.sh"
+echo ""
