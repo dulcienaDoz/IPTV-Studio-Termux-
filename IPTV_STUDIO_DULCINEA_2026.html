@@ -4,17 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#141414">
-<title>Dulcinea Stream · 2026</title>
+<title>Dulcinea Stream · 2026 (Clasificación automática)</title>
 <style>
-/* ══════════════════════════════════════
-   VARIABLES & RESET
-══════════════════════════════════════ */
+/* ===== Variables & Reset ===== */
 :root{
   --bg:#141414;--bg2:#1a1a1a;--bg3:#222;--bg4:#2a2a2a;
   --red:#E50914;--red2:#f40612;
   --text:#fff;--text2:#e5e5e5;--muted:#aaa;--muted2:#777;
   --nav-h:68px;--bottom-h:60px;
   --ease:.2s ease;--card-r:4px;
+  --spinner-size:32px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
@@ -28,9 +27,23 @@ img{max-width:100%;display:block}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:2px}
 
-/* ══════════════════════════════════════
-   TOP NAVIGATION
-══════════════════════════════════════ */
+/* ===== Spinner ===== */
+.spinner{
+  width:var(--spinner-size);height:var(--spinner-size);
+  border:4px solid rgba(255,255,255,.1);
+  border-top-color:#fff;border-radius:50%;
+  animation:spin .8s linear infinite;
+  display:inline-block;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.loading-bar{
+  position:fixed;top:0;left:0;height:3px;background:var(--red);
+  width:0%;z-index:999;transition:width .3s;
+}
+.loading-bar.done{width:100%;opacity:0;transition:width .3s,opacity .5s .3s}
+
+/* ===== Top Nav ===== */
 .top-nav{
   position:fixed;top:0;left:0;right:0;z-index:100;
   display:flex;align-items:center;justify-content:space-between;
@@ -39,517 +52,220 @@ img{max-width:100%;display:block}
   transition:background var(--ease);
 }
 .top-nav.solid{background:rgba(14,14,14,.98);box-shadow:0 2px 10px rgba(0,0,0,.5)}
-
 .nav-left{display:flex;align-items:center;gap:28px}
-.nav-logo{
-  font-size:24px;font-weight:900;letter-spacing:-1px;
-  color:var(--red);cursor:pointer;user-select:none;
-  display:flex;align-items:center;gap:2px;white-space:nowrap
-}
+.nav-logo{font-size:24px;font-weight:900;letter-spacing:-1px;color:var(--red);cursor:pointer;user-select:none;display:flex;align-items:center;gap:2px;white-space:nowrap}
 .nav-logo sup{font-size:10px;color:var(--muted);font-weight:400;letter-spacing:2px;margin-left:4px}
-
 .nav-links{display:flex;gap:16px}
-.nav-links a{
-  font-size:13px;color:rgba(255,255,255,.75);
-  transition:color var(--ease);white-space:nowrap;
-}
+.nav-links a{font-size:13px;color:rgba(255,255,255,.75);transition:color var(--ease);white-space:nowrap}
 .nav-links a:hover,.nav-links a.active{color:#fff}
-
 .nav-right{display:flex;align-items:center;gap:14px}
-.nav-icon-btn{
-  font-size:17px;color:rgba(255,255,255,.8);padding:4px;
-  transition:color var(--ease)
-}
+.nav-icon-btn{font-size:17px;color:rgba(255,255,255,.8);padding:4px;transition:color var(--ease)}
 .nav-icon-btn:hover{color:#fff}
 
-/* Profile */
 .profile-wrap{position:relative}
-.profile-trigger{
-  display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0
-}
-.profile-pic{
-  width:32px;height:32px;border-radius:4px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:18px;background:linear-gradient(135deg,var(--red),#8b0000);
-  transition:border-color var(--ease)
-}
+.profile-trigger{display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0}
+.profile-pic{width:32px;height:32px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;background:linear-gradient(135deg,var(--red),#8b0000);transition:border-color var(--ease)}
 .profile-caret{font-size:10px;color:var(--muted);transition:transform .2s}
 .profile-wrap:hover .profile-caret{transform:rotate(180deg)}
-
-.profile-dropdown{
-  position:absolute;top:calc(100% + 10px);right:0;
-  background:rgba(0,0,0,.9);border:1px solid rgba(255,255,255,.2);
-  border-radius:4px;min-width:210px;padding:8px 0;
-  opacity:0;pointer-events:none;transform:translateY(-6px);
-  transition:opacity .2s,transform .2s;z-index:200
-}
+.profile-dropdown{position:absolute;top:calc(100% + 10px);right:0;background:rgba(0,0,0,.9);border:1px solid rgba(255,255,255,.2);border-radius:4px;min-width:210px;padding:8px 0;opacity:0;pointer-events:none;transform:translateY(-6px);transition:opacity .2s,transform .2s;z-index:200}
 .profile-wrap:hover .profile-dropdown{opacity:1;pointer-events:all;transform:translateY(0)}
-
 .pd-profiles{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.12)}
-.pd-profile-item{
-  display:flex;align-items:center;gap:10px;
-  padding:8px 14px;cursor:pointer;transition:background .15s;font-size:13px
-}
+.pd-profile-item{display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;transition:background .15s;font-size:13px}
 .pd-profile-item:hover{background:rgba(255,255,255,.08)}
-.pd-profile-item .pp{
-  width:28px;height:28px;border-radius:3px;
-  display:flex;align-items:center;justify-content:center;font-size:16px
-}
+.pd-profile-item .pp{width:28px;height:28px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:16px}
 .pd-divider{height:1px;background:rgba(255,255,255,.12);margin:6px 0}
-.pd-link{
-  display:block;padding:8px 14px;font-size:13px;color:var(--text2);
-  cursor:pointer;transition:background .15s
-}
+.pd-link{display:block;padding:8px 14px;font-size:13px;color:var(--text2);cursor:pointer;transition:background .15s}
 .pd-link:hover{background:rgba(255,255,255,.06);text-decoration:underline}
+.hamburger{display:none;font-size:20px;color:var(--text);padding:4px;flex-direction:column;gap:5px;width:28px}
+.hamburger span{display:block;height:2px;background:#fff;border-radius:1px;transition:all .25s}
 
-/* Hamburger */
-.hamburger{
-  display:none;font-size:20px;color:var(--text);padding:4px;
-  flex-direction:column;gap:5px;width:28px
-}
-.hamburger span{
-  display:block;height:2px;background:#fff;border-radius:1px;
-  transition:all .25s
-}
-
-/* ══════════════════════════════════════
-   SIDEBAR
-══════════════════════════════════════ */
-.sidebar-backdrop{
-  position:fixed;inset:0;background:rgba(0,0,0,.65);
-  z-index:90;opacity:0;pointer-events:none;transition:opacity .3s
-}
+/* ===== Sidebar ===== */
+.sidebar-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:90;opacity:0;pointer-events:none;transition:opacity .3s}
 .sidebar-backdrop.open{opacity:1;pointer-events:all}
-
-.sidebar{
-  position:fixed;left:0;top:0;bottom:0;width:270px;
-  background:rgba(10,10,10,.98);border-right:1px solid rgba(255,255,255,.1);
-  z-index:91;transform:translateX(-100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
-  overflow-y:auto;padding-top:calc(var(--nav-h) + 10px)
-}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:270px;background:rgba(10,10,10,.98);border-right:1px solid rgba(255,255,255,.1);z-index:91;transform:translateX(-100%);transition:transform .3s cubic-bezier(.4,0,.2,1);overflow-y:auto;padding-top:calc(var(--nav-h) + 10px)}
 .sidebar.open{transform:translateX(0)}
-
-.sb-section{
-  padding:14px 20px 6px;font-size:10px;
-  color:var(--muted2);text-transform:uppercase;letter-spacing:1.5px
-}
-.sb-link{
-  display:flex;align-items:center;gap:12px;
-  padding:12px 20px;font-size:14px;color:var(--text2);
-  cursor:pointer;transition:background .15s,color .15s
-}
+.sb-section{padding:14px 20px 6px;font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:1.5px}
+.sb-link{display:flex;align-items:center;gap:12px;padding:12px 20px;font-size:14px;color:var(--text2);cursor:pointer;transition:background .15s,color .15s}
 .sb-link:hover,.sb-link.active{background:rgba(255,255,255,.06);color:#fff}
 .sb-icon{width:20px;text-align:center;font-size:16px}
 
-/* ══════════════════════════════════════
-   SEARCH OVERLAY
-══════════════════════════════════════ */
-.search-overlay{
-  position:fixed;inset:0;background:rgba(10,10,10,.97);
-  z-index:110;padding:calc(var(--nav-h) + 20px) 4% 20px;
-  transform:translateY(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1)
-}
+/* ===== Search ===== */
+.search-overlay{position:fixed;inset:0;background:rgba(10,10,10,.97);z-index:110;padding:calc(var(--nav-h) + 20px) 4% 20px;transform:translateY(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1)}
 .search-overlay.open{transform:translateY(0)}
-
-.search-bar{
-  display:flex;align-items:center;gap:12px;
-  border-bottom:2px solid rgba(255,255,255,.3);
-  padding-bottom:10px;margin-bottom:28px
-}
+.search-bar{display:flex;align-items:center;gap:12px;border-bottom:2px solid rgba(255,255,255,.3);padding-bottom:10px;margin-bottom:28px}
 .search-bar .si{font-size:22px;color:var(--text2)}
-.search-bar input{
-  flex:1;background:none;border:none;outline:none;
-  font-size:24px;color:#fff
-}
+.search-bar input{flex:1;background:none;border:none;outline:none;font-size:24px;color:#fff}
 .search-bar input::placeholder{color:var(--muted2)}
 .search-x{font-size:26px;color:var(--muted);cursor:pointer;transition:color .15s}
 .search-x:hover{color:#fff}
 .search-label{font-size:14px;color:var(--muted);margin-bottom:14px}
-.search-grid{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
-  gap:6px;overflow-y:auto;max-height:calc(100vh - 200px);padding-right:4px
-}
+.search-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;overflow-y:auto;max-height:calc(100vh - 200px);padding-right:4px}
 
-/* ══════════════════════════════════════
-   HERO
-══════════════════════════════════════ */
-.hero{
-  position:relative;width:100%;
-  height:min(90vh,700px);min-height:480px;
-  display:flex;align-items:flex-end;
-  overflow:hidden
-}
-.hero-bg{
-  position:absolute;inset:0;z-index:0;
-  background:linear-gradient(120deg,#0d0821 0%,#1a0915 40%,#0d0821 100%)
-}
-.hero-bg img{
-  position:absolute;inset:0;width:100%;height:100%;
-  object-fit:cover;object-position:center top;opacity:.45
-}
-.hero-grad{
-  position:absolute;inset:0;z-index:1;
-  background:
-    linear-gradient(to right,rgba(0,0,0,.88) 0%,rgba(0,0,0,.4) 55%,transparent 100%),
-    linear-gradient(to top,var(--bg) 0%,transparent 38%)
-}
-.hero-content{
-  position:relative;z-index:2;
-  padding:0 4% 8vh;max-width:620px
-}
-.hero-badge{
-  display:inline-flex;align-items:center;gap:6px;
-  background:var(--red);color:#fff;
-  font-size:11px;font-weight:800;padding:4px 10px;
-  border-radius:2px;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px
-}
-.hero-title{
-  font-size:clamp(26px,5vw,58px);font-weight:900;
-  line-height:1.05;margin-bottom:16px;
-  text-shadow:2px 2px 12px rgba(0,0,0,.8)
-}
-.hero-sub{
-  font-size:clamp(13px,1.4vw,17px);color:var(--text2);
-  line-height:1.6;margin-bottom:26px;max-width:500px;
-  text-shadow:1px 1px 6px rgba(0,0,0,.8)
-}
+/* ===== Hero ===== */
+.hero{position:relative;width:100%;height:min(90vh,700px);min-height:480px;display:flex;align-items:flex-end;overflow:hidden}
+.hero-bg{position:absolute;inset:0;z-index:0;background:linear-gradient(120deg,#0d0821 0%,#1a0915 40%,#0d0821 100%)}
+.hero-bg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;opacity:.45}
+.hero-grad{position:absolute;inset:0;z-index:1;background:linear-gradient(to right,rgba(0,0,0,.88) 0%,rgba(0,0,0,.4) 55%,transparent 100%),linear-gradient(to top,var(--bg) 0%,transparent 38%)}
+.hero-content{position:relative;z-index:2;padding:0 4% 8vh;max-width:620px}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--red);color:#fff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:2px;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px}
+.hero-title{font-size:clamp(26px,5vw,58px);font-weight:900;line-height:1.05;margin-bottom:16px;text-shadow:2px 2px 12px rgba(0,0,0,.8)}
+.hero-sub{font-size:clamp(13px,1.4vw,17px);color:var(--text2);line-height:1.6;margin-bottom:26px;max-width:500px;text-shadow:1px 1px 6px rgba(0,0,0,.8)}
 .hero-btns{display:flex;gap:12px;flex-wrap:wrap}
-
-.btn-white{
-  display:inline-flex;align-items:center;gap:8px;
-  background:#fff;color:#000;font-weight:700;
-  padding:11px 26px;border-radius:4px;font-size:15px;
-  transition:background .15s;cursor:pointer;border:none
-}
+.btn-white{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#000;font-weight:700;padding:11px 26px;border-radius:4px;font-size:15px;transition:background .15s;cursor:pointer;border:none}
 .btn-white:hover{background:rgba(255,255,255,.8)}
-.btn-gray{
-  display:inline-flex;align-items:center;gap:8px;
-  background:rgba(109,109,110,.7);color:#fff;font-weight:700;
-  padding:11px 22px;border-radius:4px;font-size:15px;
-  transition:background .15s;cursor:pointer;border:none
-}
+.btn-gray{display:inline-flex;align-items:center;gap:8px;background:rgba(109,109,110,.7);color:#fff;font-weight:700;padding:11px 22px;border-radius:4px;font-size:15px;transition:background .15s;cursor:pointer;border:none}
 .btn-gray:hover{background:rgba(109,109,110,.5)}
-.btn-red{
-  display:inline-flex;align-items:center;gap:8px;
-  background:var(--red);color:#fff;font-weight:700;
-  padding:11px 22px;border-radius:4px;font-size:15px;
-  transition:background .15s;cursor:pointer;border:none
-}
+.btn-red{display:inline-flex;align-items:center;gap:8px;background:var(--red);color:#fff;font-weight:700;padding:11px 22px;border-radius:4px;font-size:15px;transition:background .15s;cursor:pointer;border:none}
 .btn-red:hover{background:var(--red2)}
+.btn-outline{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;padding:10px 20px;border-radius:4px;font-size:14px;transition:background .15s}
+.btn-outline:hover{background:rgba(255,255,255,.1)}
 
-/* ══════════════════════════════════════
-   CONTENT / ROWS
-══════════════════════════════════════ */
+/* ===== Content Rows ===== */
 .content{position:relative;z-index:2;margin-top:-80px;padding-bottom:90px}
-
-.cat-row{
-  margin-bottom:3.5vw;padding:0 4%;
-  content-visibility:auto;
-  contain-intrinsic-size:0 220px;
-}
-.row-hdr{
-  display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:default
-}
+.cat-row{margin-bottom:3.5vw;padding:0 4%;contain:content}
+.row-hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:default}
 .row-hdr:hover .row-exp{opacity:1}
-.row-ttl{
-  font-size:clamp(14px,1.4vw,20px);font-weight:700;color:var(--text2)
-}
-.row-exp{
-  font-size:12px;color:#54b9c5;opacity:0;transition:opacity .15s;
-  display:flex;align-items:center;gap:3px
-}
+.row-ttl{font-size:clamp(14px,1.4vw,20px);font-weight:700;color:var(--text2)}
+.row-exp{font-size:12px;color:#54b9c5;opacity:0;transition:opacity .15s;display:flex;align-items:center;gap:3px}
 .row-count{font-size:12px;color:var(--muted2);margin-left:auto}
-
 .car-wrap{position:relative}
-.car-track{
-  display:flex;gap:5px;overflow-x:auto;overflow-y:visible;
-  padding:12px 2px;scroll-behavior:smooth;scrollbar-width:none
-}
+.car-track{display:flex;gap:5px;overflow-x:auto;overflow-y:visible;padding:12px 2px;scroll-behavior:smooth;scrollbar-width:none}
 .car-track::-webkit-scrollbar{display:none}
-
-.car-btn{
-  position:absolute;top:50%;transform:translateY(-50%);
-  z-index:5;background:rgba(0,0,0,.75);border:1px solid rgba(255,255,255,.25);
-  color:#fff;width:42px;height:42px;border-radius:50%;
-  font-size:18px;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;opacity:0;transition:opacity .2s,background .15s
-}
+.car-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:5;background:rgba(0,0,0,.75);border:1px solid rgba(255,255,255,.25);color:#fff;width:42px;height:42px;border-radius:50%;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .2s,background .15s}
 .car-wrap:hover .car-btn{opacity:1}
 .car-btn:hover{background:rgba(20,20,20,.98)}
 .car-btn.lft{left:-21px}
 .car-btn.rgt{right:-21px}
+.row-placeholder{min-height:180px;display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:14px}
 
-/* ══════════════════════════════════════
-   CARD
-══════════════════════════════════════ */
-.card{
-  flex:0 0 auto;width:clamp(130px,14vw,210px);
-  cursor:pointer;position:relative;border-radius:var(--card-r);
-  transition:transform .25s ease,z-index 0s .25s
-}
+/* ===== Card ===== */
+.card{flex:0 0 auto;width:clamp(130px,14vw,210px);cursor:pointer;position:relative;border-radius:var(--card-r);transition:transform .25s ease,z-index 0s .25s}
 .card:hover{transform:scale(1.08);z-index:10;transition:transform .25s ease,z-index 0s}
 .card:first-child:hover{transform:scale(1.08) translateX(4%)}
 .card:last-child:hover{transform:scale(1.08) translateX(-4%)}
-
-.card-thumb{
-  width:100%;aspect-ratio:16/9;border-radius:var(--card-r);
-  overflow:hidden;background:var(--bg3);position:relative
-}
-.card-thumb img{
-  width:100%;height:100%;object-fit:cover;
-  content-visibility:auto;
-}
-.card-fb{
-  position:absolute;inset:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:6px;
-  background:linear-gradient(135deg,#1a0821,#16213e,#0f2060);
-  padding:8px;text-align:center
-}
+.card-thumb{width:100%;aspect-ratio:16/9;border-radius:var(--card-r);overflow:hidden;background:var(--bg3);position:relative}
+.card-thumb img{width:100%;height:100%;object-fit:cover;content-visibility:auto}
+.card-fb{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#1a0821,#16213e,#0f2060);padding:8px;text-align:center}
 .card-fb-icon{font-size:26px;opacity:.6}
-.card-fb-name{
-  font-size:9px;font-weight:700;color:var(--muted);
-  line-height:1.3;max-height:2.6em;overflow:hidden
-}
-
-.card-ov{
-  position:absolute;inset:0;
-  background:linear-gradient(to top,rgba(0,0,0,.9) 0%,rgba(0,0,0,.4) 60%,transparent 100%);
-  display:flex;flex-direction:column;justify-content:flex-end;
-  padding:10px;opacity:0;transition:opacity .2s;border-radius:var(--card-r)
-}
+.card-fb-name{font-size:9px;font-weight:700;color:var(--muted);line-height:1.3;max-height:2.6em;overflow:hidden}
+.card-ov{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.9) 0%,rgba(0,0,0,.4) 60%,transparent 100%);display:flex;flex-direction:column;justify-content:flex-end;padding:10px;opacity:0;transition:opacity .2s;border-radius:var(--card-r)}
 .card:hover .card-ov{opacity:1}
 .card-ov-name{font-size:10px;font-weight:700;margin-bottom:7px;line-height:1.3}
 .card-ov-btns{display:flex;gap:5px}
-.cob{
-  width:28px;height:28px;border-radius:50%;
-  border:1.5px solid rgba(255,255,255,.7);
-  display:flex;align-items:center;justify-content:center;
-  font-size:11px;cursor:pointer;background:rgba(0,0,0,.5);
-  transition:background .15s,transform .15s
-}
+.cob{width:28px;height:28px;border-radius:50%;border:1.5px solid rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;background:rgba(0,0,0,.5);transition:background .15s,transform .15s}
 .cob:hover{background:rgba(255,255,255,.15);transform:scale(1.1)}
 .cob.play{background:#fff;color:#000;border-color:#fff}
 .cob.play:hover{background:rgba(255,255,255,.85)}
-
-.card-lbl{
-  margin-top:5px;font-size:11px;color:var(--text2);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px
-}
+.card-lbl{margin-top:5px;font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px}
 .card-grp{font-size:10px;color:var(--muted2);padding:0 2px}
-
-/* Live badge on card */
-.card-live{
-  position:absolute;top:6px;left:6px;
-  background:var(--red);color:#fff;font-size:8px;font-weight:800;
-  padding:2px 5px;border-radius:2px;text-transform:uppercase;letter-spacing:.5px;
-  z-index:2
+.card-live{position:absolute;top:6px;left:6px;background:var(--red);color:#fff;font-size:8px;font-weight:800;padding:2px 5px;border-radius:2px;text-transform:uppercase;letter-spacing:.5px;z-index:2}
+/* Badge de tipo (Live, Movie, Series) */
+.card-type-badge{
+  position:absolute;bottom:6px;right:6px;
+  background:rgba(0,0,0,.8);color:#fff;
+  font-size:8px;font-weight:700;padding:2px 5px;
+  border-radius:2px;letter-spacing:.3px;z-index:3;
+  text-shadow:0 1px 2px rgba(0,0,0,.5);
+  pointer-events:none;
 }
+.card-type-badge.live{background:#E50914;}
+.card-type-badge.movie{background:#1a73e8;}
+.card-type-badge.series{background:#e67e22;}
 
-/* ══════════════════════════════════════
-   DETAIL MODAL
-══════════════════════════════════════ */
-.modal-bg{
-  position:fixed;inset:0;background:rgba(0,0,0,.8);
-  z-index:200;display:flex;align-items:flex-start;justify-content:center;
-  overflow-y:auto;padding:40px 16px;
-  opacity:0;pointer-events:none;transition:opacity .25s
-}
+/* ===== Modal ===== */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px;opacity:0;pointer-events:none;transition:opacity .25s}
 .modal-bg.open{opacity:1;pointer-events:all}
-
-.modal-box{
-  background:#181818;border-radius:6px;overflow:hidden;
-  width:100%;max-width:870px;
-  transform:scale(.93) translateY(20px);transition:transform .25s
-}
+.modal-box{background:#181818;border-radius:6px;overflow:hidden;width:100%;max-width:870px;transform:scale(.93) translateY(20px);transition:transform .25s}
 .modal-bg.open .modal-box{transform:scale(1) translateY(0)}
-
-.modal-x{
-  position:absolute;top:14px;right:14px;z-index:5;
-  width:36px;height:36px;border-radius:50%;
-  border:2px solid rgba(255,255,255,.5);
-  background:rgba(24,24,24,.9);font-size:18px;color:#fff;
-  display:flex;align-items:center;justify-content:center;cursor:pointer
-}
+.modal-x{position:absolute;top:14px;right:14px;z-index:5;width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.5);background:rgba(24,24,24,.9);font-size:18px;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .modal-x:hover{background:rgba(255,255,255,.15)}
-
 .modal-hero{width:100%;height:clamp(200px,35vw,380px);position:relative;overflow:hidden}
 .modal-hero-bg{position:absolute;inset:0;background:linear-gradient(135deg,#1a0821,#16213e)}
 .modal-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55}
-.modal-hero-fade{
-  position:absolute;inset:0;
-  background:linear-gradient(to top,#181818 0%,transparent 55%)
-}
-.modal-hero-ttl{
-  position:absolute;bottom:0;left:0;right:0;padding:24px;z-index:2;
-  font-size:clamp(22px,3vw,34px);font-weight:900;
-  text-shadow:2px 2px 10px rgba(0,0,0,.8)
-}
-
+.modal-hero-fade{position:absolute;inset:0;background:linear-gradient(to top,#181818 0%,transparent 55%)}
+.modal-hero-ttl{position:absolute;bottom:0;left:0;right:0;padding:24px;z-index:2;font-size:clamp(22px,3vw,34px);font-weight:900;text-shadow:2px 2px 10px rgba(0,0,0,.8)}
 .modal-body{padding:0 24px 28px}
 .modal-meta{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
-.live-badge{
-  display:inline-flex;align-items:center;gap:5px;
-  background:var(--red);color:#fff;font-size:11px;
-  font-weight:800;padding:3px 8px;border-radius:2px;text-transform:uppercase
-}
+.live-badge{display:inline-flex;align-items:center;gap:5px;background:var(--red);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:2px;text-transform:uppercase}
 .modal-grp{font-size:14px;color:var(--text2)}
 .modal-acts{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap}
-.btn-circle{
-  width:42px;height:42px;border-radius:50%;
-  border:2px solid rgba(255,255,255,.55);background:rgba(0,0,0,.4);
-  color:#fff;font-size:17px;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:border-color .15s,background .15s
-}
+.btn-circle{width:42px;height:42px;border-radius:50%;border:2px solid rgba(255,255,255,.55);background:rgba(0,0,0,.4);color:#fff;font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:border-color .15s,background .15s}
 .btn-circle:hover{border-color:#fff;background:rgba(255,255,255,.1)}
 .modal-desc{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:14px}
 .modal-tag{font-size:12px;color:var(--muted)}
 .modal-tag span{color:var(--text2)}
 
-/* ══════════════════════════════════════
-   PLAYER FULL SCREEN
-══════════════════════════════════════ */
-.player-fs{
-  position:fixed;inset:0;background:#000;z-index:300;
-  display:none;flex-direction:column
-}
+/* ===== Player ===== */
+.player-fs{position:fixed;inset:0;background:#000;z-index:300;display:none;flex-direction:column}
 .player-fs.open{display:flex}
-.player-top-bar{
-  position:absolute;top:0;left:0;right:0;
-  display:flex;align-items:center;gap:14px;
-  padding:14px 18px;z-index:10;
-  background:linear-gradient(180deg,rgba(0,0,0,.8) 0%,transparent 100%)
-}
+.player-top-bar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;padding:14px 18px;z-index:10;background:linear-gradient(180deg,rgba(0,0,0,.8) 0%,transparent 100%)}
 .player-back{font-size:24px;color:#fff;cursor:pointer;padding:4px}
 .player-back:hover{opacity:.75}
 .player-info-bar{flex:1}
 .player-ch-name{font-size:16px;font-weight:700}
 .player-ch-grp{font-size:12px;color:var(--muted)}
+.player-status{font-size:11px;color:#aaa;margin-top:2px;min-height:14px}
+.player-err-msg{color:#ff9cbf;font-size:13px;margin-top:6px}
 #mainVid{width:100%;height:100%;object-fit:contain;background:#000}
 
-/* ══════════════════════════════════════
-   LOAD DRAWER
-══════════════════════════════════════ */
-.drawer-bg{
-  position:fixed;inset:0;background:rgba(0,0,0,.7);
-  z-index:150;opacity:0;pointer-events:none;transition:opacity .25s
-}
+/* ===== Drawer ===== */
+.drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:150;opacity:0;pointer-events:none;transition:opacity .25s}
 .drawer-bg.open{opacity:1;pointer-events:all}
-
-.drawer{
-  position:fixed;bottom:0;left:0;right:0;
-  background:#1c1c1c;border-top:1px solid rgba(255,255,255,.12);
-  border-radius:18px 18px 0 0;z-index:151;
-  padding:0 24px 40px;max-height:82vh;overflow-y:auto;
-  transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1)
-}
+.drawer{position:fixed;bottom:0;left:0;right:0;background:#1c1c1c;border-top:1px solid rgba(255,255,255,.12);border-radius:18px 18px 0 0;z-index:151;padding:0 24px 40px;max-height:82vh;overflow-y:auto;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
 .drawer-bg.open~.drawer,.drawer.open{transform:translateY(0)}
-
 .drawer-pill{width:36px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;margin:14px auto 22px}
 .drawer-ttl{font-size:20px;font-weight:700;margin-bottom:22px}
-
 .field{margin-bottom:16px}
 .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:7px;text-transform:uppercase;letter-spacing:.6px}
-.field input,.field select{
-  width:100%;padding:12px 14px;
-  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);
-  border-radius:4px;color:#fff;font-size:14px;outline:none;
-  transition:border-color .15s
-}
+.field input,.field select{width:100%;padding:12px 14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:4px;color:#fff;font-size:14px;outline:none;transition:border-color .15s}
 .field input:focus,.field select:focus{border-color:rgba(255,255,255,.4)}
 .field input::placeholder{color:var(--muted2)}
-.file-lbl{
-  display:flex;align-items:center;gap:10px;
-  padding:12px 14px;cursor:pointer;border-radius:4px;font-size:14px;
-  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);
-  color:var(--text2);transition:background .15s
-}
+.file-lbl{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-radius:4px;font-size:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:var(--text2);transition:background .15s}
 .file-lbl:hover{background:rgba(255,255,255,.11)}
 .file-lbl .fn{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #fileInput{display:none}
-.drawer-acts{display:flex;gap:10px;margin-top:20px}
-.drawer-acts>*{flex:1;justify-content:center}
+.drawer-acts{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
+.drawer-acts>*{flex:1;justify-content:center;min-width:80px}
 .dstatus{margin-top:10px;font-size:13px;color:var(--muted);min-height:18px}
 .dstatus.ok{color:#7dffbf}
 .dstatus.err{color:#ff9cbf}
 
-/* ══════════════════════════════════════
-   PROFILES SCREEN
-══════════════════════════════════════ */
-.profiles-screen{
-  position:fixed;inset:0;background:var(--bg);z-index:250;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  opacity:0;pointer-events:none;transition:opacity .25s
-}
+/* ===== Profiles ===== */
+.profiles-screen{position:fixed;inset:0;background:var(--bg);z-index:250;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
 .profiles-screen.open{opacity:1;pointer-events:all}
 .prof-title{font-size:clamp(22px,3.5vw,36px);font-weight:400;margin-bottom:40px}
 .prof-grid{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;margin-bottom:40px}
-.prof-card{
-  display:flex;flex-direction:column;align-items:center;
-  gap:10px;cursor:pointer
-}
+.prof-card{display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer}
 .prof-card:hover .prof-av{border:3px solid #fff}
 .prof-card:hover .prof-name{color:#fff}
-.prof-av{
-  width:84px;height:84px;border-radius:6px;
-  border:3px solid transparent;transition:border-color .15s;
-  display:flex;align-items:center;justify-content:center;font-size:36px;
-  overflow:hidden
-}
+.prof-av{width:84px;height:84px;border-radius:6px;border:3px solid transparent;transition:border-color .15s;display:flex;align-items:center;justify-content:center;font-size:36px;overflow:hidden}
 .prof-name{font-size:14px;color:var(--muted);transition:color .15s}
 
-/* ══════════════════════════════════════
-   BOTTOM NAV (mobile)
-══════════════════════════════════════ */
-.bot-nav{
-  display:none;position:fixed;bottom:0;left:0;right:0;
-  background:rgba(10,10,10,.97);border-top:1px solid rgba(255,255,255,.1);
-  z-index:80;padding-bottom:env(safe-area-inset-bottom,0)
-}
+/* ===== Bottom Nav ===== */
+.bot-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,10,.97);border-top:1px solid rgba(255,255,255,.1);z-index:80;padding-bottom:env(safe-area-inset-bottom,0)}
 .bot-nav-inner{display:flex}
-.bn-btn{
-  flex:1;display:flex;flex-direction:column;align-items:center;
-  gap:2px;padding:9px 4px;font-size:10px;color:var(--muted);
-  cursor:pointer;transition:color .15s
-}
+.bn-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 4px;font-size:10px;color:var(--muted);cursor:pointer;transition:color .15s}
 .bn-btn .bni{font-size:20px;display:block}
 .bn-btn.active{color:#fff}
 .bn-btn:hover{color:var(--text2)}
 
-/* ══════════════════════════════════════
-   EMPTY STATE
-══════════════════════════════════════ */
-.empty-wrap{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:14px;padding:60px 20px;color:var(--muted);text-align:center
-}
+/* ===== Empty ===== */
+.empty-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:60px 20px;color:var(--muted);text-align:center}
 .empty-wrap .ei{font-size:52px;opacity:.35}
 .empty-wrap h3{font-size:20px;font-weight:700;color:var(--text2)}
 .empty-wrap p{font-size:14px;max-width:380px;line-height:1.6}
 
-/* ══════════════════════════════════════
-   TOAST
-══════════════════════════════════════ */
-.toast{
-  position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
-  background:#fff;color:#000;padding:11px 20px;border-radius:4px;
-  font-size:14px;font-weight:500;z-index:400;
-  opacity:0;pointer-events:none;transition:opacity .18s;white-space:nowrap;
-  box-shadow:0 4px 20px rgba(0,0,0,.5)
-}
+/* ===== Toast ===== */
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#fff;color:#000;padding:11px 20px;border-radius:4px;font-size:14px;font-weight:500;z-index:400;opacity:0;pointer-events:none;transition:opacity .18s;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.5)}
 .toast.show{opacity:1}
+.toast.success{border-left:4px solid #4caf50}
+.toast.error{border-left:4px solid #f44336}
 
-/* ══════════════════════════════════════
-   LIVE DOT ANIMATION
-══════════════════════════════════════ */
-.ldot{
-  width:6px;height:6px;border-radius:50%;background:currentColor;
-  display:inline-block;animation:ldpulse 1.4s ease-in-out infinite
-}
+/* ===== Live dot ===== */
+.ldot{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;animation:ldpulse 1.4s ease-in-out infinite}
 @keyframes ldpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.75)}}
 
-/* ══════════════════════════════════════
-   RESPONSIVE
-══════════════════════════════════════ */
+/* ===== Responsive ===== */
 @media(max-width:900px){
   .nav-links{display:none}
   .hamburger{display:flex}
@@ -569,15 +285,10 @@ img{max-width:100%;display:block}
   .card:hover{transform:none;z-index:auto}
   .card:hover .card-ov{opacity:0}
 }
-.row-more{
-  flex:0 0 auto;min-width:92px;height:72px;
-  margin:12px 2px 0;padding:0 12px;
-  border:1px solid rgba(255,255,255,.16);
-  border-radius:6px;background:rgba(255,255,255,.05);
-  color:var(--text2);font-size:11px;font-weight:700;
-}
+.row-more{flex:0 0 auto;min-width:92px;height:72px;margin:12px 2px 0;padding:0 12px;border:1px solid rgba(255,255,255,.16);border-radius:6px;background:rgba(255,255,255,.05);color:var(--text2);font-size:11px;font-weight:700;transition:background .15s}
+.row-more:hover{background:rgba(255,255,255,.12)}
 .row-more:active{background:rgba(255,255,255,.12)}
-.player-status{font-size:11px;color:#aaa;margin-top:2px;min-height:14px}
+.spinner-inline{display:inline-block;width:20px;height:20px;border:2px solid rgba(255,255,255,.1);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px}
 
 @media(prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
@@ -586,62 +297,65 @@ img{max-width:100%;display:block}
 </head>
 <body>
 
-<!-- ══════════ TOP NAV ══════════ -->
-<nav class="top-nav" id="topNav">
+<!-- Loading bar -->
+<div class="loading-bar" id="loadingBar"></div>
+
+<!-- ===== Top Nav ===== -->
+<nav class="top-nav" id="topNav" role="navigation" aria-label="Navegación principal">
   <div class="nav-left">
-    <button class="hamburger" id="hamburgerBtn" aria-label="Menú">
+    <button class="hamburger" id="hamburgerBtn" aria-label="Abrir menú lateral">
       <span></span><span></span><span></span>
     </button>
-    <div class="nav-logo" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+    <div class="nav-logo" onclick="window.scrollTo({top:0,behavior:'smooth'})" role="button" tabindex="0" aria-label="Ir al inicio">
       TMX-D-SKA<sup>DULCINEA</sup>
     </div>
-    <ul class="nav-links" id="navLinks">
-      <li><a href="#" class="active" data-nav="inicio">Inicio</a></li>
-      <li><a href="#" data-nav="series">Series</a></li>
-      <li><a href="#" data-nav="peliculas">Películas</a></li>
-      <li><a href="#" data-nav="nuevos">Nuevos y populares</a></li>
-      <li><a href="#" data-nav="milista">Mi lista</a></li>
-      <li><a href="#" data-nav="envivo">En vivo</a></li>
+    <ul class="nav-links" id="navLinks" role="list">
+      <li><a href="#" class="active" data-nav="inicio" role="link">Inicio</a></li>
+      <li><a href="#" data-nav="series" role="link">Series</a></li>
+      <li><a href="#" data-nav="peliculas" role="link">Películas</a></li>
+      <li><a href="#" data-nav="nuevos" role="link">Nuevos y populares</a></li>
+      <li><a href="#" data-nav="milista" role="link">Mi lista</a></li>
+      <li><a href="#" data-nav="envivo" role="link">En vivo</a></li>
     </ul>
   </div>
   <div class="nav-right">
-    <button class="nav-icon-btn" id="searchToggle" title="Buscar">🔍</button>
-    <button class="nav-icon-btn" id="openM3uBtn" title="Cargar M3U">📂</button>
-    <div class="profile-wrap">
-      <div class="profile-trigger" id="profileTrigger">
-        <div class="profile-pic" id="activePic">🎭</div>
+    <button class="nav-icon-btn" id="searchToggle" aria-label="Buscar" title="Buscar">🔍</button>
+    <button class="nav-icon-btn" id="openM3uBtn" aria-label="Cargar lista M3U" title="Cargar M3U">📂</button>
+    <div class="profile-wrap" role="menu">
+      <div class="profile-trigger" id="profileTrigger" aria-haspopup="true" aria-expanded="false">
+        <div class="profile-pic" id="activePic" aria-label="Perfil activo">🎭</div>
         <span class="profile-caret">▾</span>
       </div>
-      <div class="profile-dropdown">
-        <div class="pd-profiles" id="pdProfiles">
-          <div class="pd-profile-item" onclick="switchProfile('Usuario 1','🎭','linear-gradient(135deg,#E50914,#8b0000)')">
+      <div class="profile-dropdown" role="menu" aria-label="Menú de perfil">
+        <div class="pd-profiles">
+          <div class="pd-profile-item" role="menuitem" onclick="App.switchProfile('Usuario 1','🎭','linear-gradient(135deg,#E50914,#8b0000)')">
             <div class="pp" style="background:linear-gradient(135deg,#E50914,#8b0000)">🎭</div><span>Usuario 1</span>
           </div>
-          <div class="pd-profile-item" onclick="switchProfile('Usuario 2','🎮','linear-gradient(135deg,#2196f3,#0d47a1)')">
+          <div class="pd-profile-item" role="menuitem" onclick="App.switchProfile('Usuario 2','🎮','linear-gradient(135deg,#2196f3,#0d47a1)')">
             <div class="pp" style="background:linear-gradient(135deg,#2196f3,#0d47a1)">🎮</div><span>Usuario 2</span>
           </div>
-          <div class="pd-profile-item" onclick="switchProfile('Niños','🧸','linear-gradient(135deg,#ffc107,#e65100)')">
+          <div class="pd-profile-item" role="menuitem" onclick="App.switchProfile('Niños','🧸','linear-gradient(135deg,#ffc107,#e65100)')">
             <div class="pp" style="background:linear-gradient(135deg,#ffc107,#e65100)">🧸</div><span>Niños</span>
           </div>
-          <div class="pd-profile-item" onclick="openProfiles()">
+          <div class="pd-profile-item" role="menuitem" onclick="App.openProfiles()">
             <div class="pp" style="background:rgba(255,255,255,.08);border:1.5px dashed rgba(255,255,255,.3)">＋</div>
             <span>Administrar perfiles</span>
           </div>
         </div>
         <div class="pd-divider"></div>
-        <div class="pd-link" onclick="openDrawer()">📂 Cargar lista M3U</div>
-        <div class="pd-link" onclick="openProfiles()">⚙️ Configuración</div>
-        <div class="pd-link">❓ Ayuda</div>
+        <div class="pd-link" role="menuitem" onclick="App.openDrawer()">📂 Cargar lista M3U</div>
+        <div class="pd-link" role="menuitem" onclick="App.openProfiles()">⚙️ Configuración</div>
+        <div class="pd-link" role="menuitem">❓ Ayuda</div>
         <div class="pd-divider"></div>
-        <div class="pd-link" style="color:#E50914">→ Cerrar sesión</div>
+        <div class="pd-link" role="menuitem" style="color:#E50914">→ Cerrar sesión</div>
       </div>
     </div>
   </div>
 </nav>
 
-<!-- ══════════ SIDEBAR ══════════ -->
-<div class="sidebar-backdrop" id="sideBackdrop"></div>
-<aside class="sidebar" id="sidebar">
+<!-- ===== Sidebar ===== -->
+<div class="sidebar-backdrop" id="sideBackdrop" role="button" aria-label="Cerrar menú lateral"></div>
+<aside class="sidebar" id="sidebar" role="navigation" aria-label="Menú lateral">
   <div class="sb-section">Navegación</div>
   <div class="sb-link active" data-nav="inicio"><span class="sb-icon">🏠</span> Inicio</div>
   <div class="sb-link" data-nav="series"><span class="sb-icon">📺</span> Series</div>
@@ -652,25 +366,25 @@ img{max-width:100%;display:block}
   <div class="sb-section" id="sbCatSection" style="display:none">Categorías</div>
   <div id="sbCats"></div>
   <div class="sb-section">Herramientas</div>
-  <div class="sb-link" onclick="openDrawer()"><span class="sb-icon">📂</span> Cargar M3U</div>
-  <div class="sb-link" onclick="openProfiles()"><span class="sb-icon">👤</span> Perfiles</div>
+  <div class="sb-link" onclick="App.openDrawer()"><span class="sb-icon">📂</span> Cargar M3U</div>
+  <div class="sb-link" onclick="App.openProfiles()"><span class="sb-icon">👤</span> Perfiles</div>
 </aside>
 
-<!-- ══════════ SEARCH ══════════ -->
-<div class="search-overlay" id="searchOverlay">
+<!-- ===== Search ===== -->
+<div class="search-overlay" id="searchOverlay" role="dialog" aria-modal="true" aria-label="Búsqueda">
   <div class="search-bar">
     <span class="si">🔍</span>
-    <input type="search" id="searchInput" placeholder="Buscar canales, categorías..." autocomplete="off" spellcheck="false">
-    <button class="search-x" id="searchClose">✕</button>
+    <input type="search" id="searchInput" placeholder="Buscar canales, categorías..." autocomplete="off" spellcheck="false" aria-label="Campo de búsqueda">
+    <button class="search-x" id="searchClose" aria-label="Cerrar búsqueda">✕</button>
   </div>
   <div class="search-label" id="searchLabel">Escribe para buscar</div>
-  <div class="search-grid" id="searchGrid"></div>
+  <div class="search-grid" id="searchGrid" role="list"></div>
 </div>
 
-<!-- ══════════ MAIN ══════════ -->
+<!-- ===== Main ===== -->
 <main>
   <!-- Hero -->
-  <section class="hero" id="heroSec">
+  <section class="hero" id="heroSec" aria-label="Destacado">
     <div class="hero-bg" id="heroBg">
       <div style="position:absolute;inset:0;background:linear-gradient(120deg,#0d0821 0%,#1a0915 40%,#0a0a18 100%)"></div>
     </div>
@@ -682,19 +396,19 @@ img{max-width:100%;display:block}
       <div class="hero-btns">
         <button class="btn-white" id="heroPlayBtn">▶&nbsp; Reproducir</button>
         <button class="btn-gray" id="heroInfoBtn">ℹ&nbsp; Más información</button>
-        <button class="btn-red" onclick="openDrawer()" id="heroLoadBtn">📂&nbsp; Cargar M3U</button>
+        <button class="btn-red" onclick="App.openDrawer()" id="heroLoadBtn">📂&nbsp; Cargar M3U</button>
       </div>
     </div>
   </section>
 
   <!-- Rows -->
-  <div class="content" id="rowsCont"></div>
+  <div class="content" id="rowsCont" role="list"></div>
 </main>
 
-<!-- ══════════ DETAIL MODAL ══════════ -->
-<div class="modal-bg" id="modalBg">
+<!-- ===== Detail Modal ===== -->
+<div class="modal-bg" id="modalBg" role="dialog" aria-modal="true" aria-label="Detalle del canal">
   <div class="modal-box" style="position:relative">
-    <button class="modal-x" id="modalX">✕</button>
+    <button class="modal-x" id="modalX" aria-label="Cerrar">✕</button>
     <div class="modal-hero">
       <div class="modal-hero-bg" id="modalHeroBg"></div>
       <div class="modal-hero-fade"></div>
@@ -717,10 +431,10 @@ img{max-width:100%;display:block}
   </div>
 </div>
 
-<!-- ══════════ PLAYER ══════════ -->
-<div class="player-fs" id="playerFs">
+<!-- ===== Player ===== -->
+<div class="player-fs" id="playerFs" role="dialog" aria-modal="true" aria-label="Reproductor de vídeo">
   <div class="player-top-bar">
-    <button class="player-back" id="playerBack">←</button>
+    <button class="player-back" id="playerBack" aria-label="Cerrar reproductor">←</button>
     <div class="player-info-bar">
       <div class="player-ch-name" id="playerName">Canal</div>
       <div class="player-ch-grp" id="playerGrp">Categoría</div>
@@ -728,26 +442,26 @@ img{max-width:100%;display:block}
     </div>
     <button class="btn-circle" id="playerListBtn" style="font-size:14px" title="Mi lista">＋</button>
   </div>
-  <video id="mainVid" controls playsinline preload="none"></video>
+  <video id="mainVid" controls playsinline preload="metadata"></video>
 </div>
 
-<!-- ══════════ PROFILES ══════════ -->
-<div class="profiles-screen" id="profilesScreen">
+<!-- ===== Profiles ===== -->
+<div class="profiles-screen" id="profilesScreen" role="dialog" aria-modal="true" aria-label="Gestión de perfiles">
   <div class="prof-title">¿Quién está viendo?</div>
   <div class="prof-grid">
-    <div class="prof-card" onclick="switchProfile('Usuario 1','🎭','linear-gradient(135deg,#E50914,#8b0000)')">
+    <div class="prof-card" onclick="App.switchProfile('Usuario 1','🎭','linear-gradient(135deg,#E50914,#8b0000)')">
       <div class="prof-av" style="background:linear-gradient(135deg,#E50914,#8b0000)">🎭</div>
       <div class="prof-name">Usuario 1</div>
     </div>
-    <div class="prof-card" onclick="switchProfile('Usuario 2','🎮','linear-gradient(135deg,#2196f3,#0d47a1)')">
+    <div class="prof-card" onclick="App.switchProfile('Usuario 2','🎮','linear-gradient(135deg,#2196f3,#0d47a1)')">
       <div class="prof-av" style="background:linear-gradient(135deg,#2196f3,#0d47a1)">🎮</div>
       <div class="prof-name">Usuario 2</div>
     </div>
-    <div class="prof-card" onclick="switchProfile('Niños','🧸','linear-gradient(135deg,#ffc107,#e65100)')">
+    <div class="prof-card" onclick="App.switchProfile('Niños','🧸','linear-gradient(135deg,#ffc107,#e65100)')">
       <div class="prof-av" style="background:linear-gradient(135deg,#ffc107,#e65100)">🧸</div>
       <div class="prof-name">Niños</div>
     </div>
-    <div class="prof-card" onclick="switchProfile('Invitado','👻','linear-gradient(135deg,#4caf50,#1b5e20)')">
+    <div class="prof-card" onclick="App.switchProfile('Invitado','👻','linear-gradient(135deg,#4caf50,#1b5e20)')">
       <div class="prof-av" style="background:linear-gradient(135deg,#4caf50,#1b5e20)">👻</div>
       <div class="prof-name">Invitado</div>
     </div>
@@ -756,17 +470,17 @@ img{max-width:100%;display:block}
       <div class="prof-name">Añadir perfil</div>
     </div>
   </div>
-  <button class="btn-gray" onclick="closeProfiles()">Cancelar</button>
+  <button class="btn-gray" onclick="App.closeProfiles()">Cancelar</button>
 </div>
 
-<!-- ══════════ DRAWER ══════════ -->
-<div class="drawer-bg" id="drawerBg"></div>
-<div class="drawer" id="drawer">
+<!-- ===== Drawer ===== -->
+<div class="drawer-bg" id="drawerBg" role="button" aria-label="Cerrar panel"></div>
+<div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Cargar lista M3U">
   <div class="drawer-pill"></div>
   <div class="drawer-ttl">📂 Cargar lista M3U</div>
-  <div style="font-size:12px;color:#aaa;margin:-12px 0 18px">⚡ Modo rápido: máximo 5 títulos, imágenes y URLs por categoría.</div>
+  <div style="font-size:12px;color:#aaa;margin:-12px 0 18px">⚡ Clasificación automática: Live · Movie · Series</div>
   <div class="field">
-    <label>Archivo M3U / M3U8</label>
+    <label for="fileInput">Archivo M3U / M3U8</label>
     <label class="file-lbl" for="fileInput">
       <span>📁</span>
       <span class="fn" id="fileName">Seleccionar archivo .m3u, .m3u8 o .txt</span>
@@ -774,11 +488,27 @@ img{max-width:100%;display:block}
     <input type="file" id="fileInput" accept=".m3u,.m3u8,.txt,application/x-mpegURL">
   </div>
   <div class="field">
-    <label>O pega una URL de lista M3U</label>
+    <label for="urlInput">O pega una URL de lista M3U</label>
     <input type="url" id="urlInput" placeholder="https://ejemplo.com/lista.m3u">
   </div>
   <div class="field">
-    <label>Método de carga</label>
+    <label for="listNameInput">Nombre para guardar la lista</label>
+    <input type="text" id="listNameInput" placeholder="Ej.: Mi IPTV">
+  </div>
+  <div class="field">
+    <label for="savedListsSelect">Listas guardadas en este dispositivo</label>
+    <select id="savedListsSelect">
+      <option value="">— Selecciona una lista guardada —</option>
+    </select>
+    <div id="savedStatus" style="font-size:12px;color:var(--muted);margin-top:6px"></div>
+  </div>
+  <div class="drawer-acts" style="margin-top:8px">
+    <button class="btn-gray" id="openSavedBtn" type="button">📂 Abrir guardada</button>
+    <button class="btn-gray" id="updateSavedBtn" type="button">🔄 Actualizar</button>
+    <button class="btn-gray" id="deleteSavedBtn" type="button">🗑️ Eliminar</button>
+  </div>
+  <div class="field">
+    <label for="urlMode">Método de carga</label>
     <select id="urlMode">
       <option value="auto">Automático (Termux → directo)</option>
       <option value="direct">Solo directo</option>
@@ -786,777 +516,1312 @@ img{max-width:100%;display:block}
     </select>
   </div>
   <div class="field" id="proxyField" style="display:none">
-    <label>URL del proxy CORS</label>
+    <label for="proxyInput">URL del proxy CORS</label>
     <input type="url" id="proxyInput" placeholder="https://tu-proxy.example/?url=">
   </div>
   <div class="drawer-acts">
     <button class="btn-gray" id="demoBtn">🎬 Demo</button>
+    <button class="btn-gray" id="saveListBtn" type="button">💾 Guardar</button>
     <button class="btn-red" id="loadBtn">Cargar lista</button>
   </div>
   <div class="dstatus" id="dStatus"></div>
 </div>
 
-<!-- ══════════ BOTTOM NAV ══════════ -->
-<nav class="bot-nav">
+<!-- ===== Bottom Nav ===== -->
+<nav class="bot-nav" aria-label="Navegación móvil">
   <div class="bot-nav-inner">
-    <button class="bn-btn active" data-bnav="inicio"><span class="bni">🏠</span>Inicio</button>
-    <button class="bn-btn" data-bnav="search"><span class="bni">🔍</span>Buscar</button>
-    <button class="bn-btn" data-bnav="nuevos"><span class="bni">🔥</span>Nuevos</button>
-    <button class="bn-btn" data-bnav="milista"><span class="bni">📋</span>Mi lista</button>
-    <button class="bn-btn" data-bnav="perfil"><span class="bni">👤</span>Perfil</button>
+    <button class="bn-btn active" data-bnav="inicio" aria-label="Inicio"><span class="bni">🏠</span>Inicio</button>
+    <button class="bn-btn" data-bnav="search" aria-label="Buscar"><span class="bni">🔍</span>Buscar</button>
+    <button class="bn-btn" data-bnav="nuevos" aria-label="Nuevos"><span class="bni">🔥</span>Nuevos</button>
+    <button class="bn-btn" data-bnav="milista" aria-label="Mi lista"><span class="bni">📋</span>Mi lista</button>
+    <button class="bn-btn" data-bnav="perfil" aria-label="Perfil"><span class="bni">👤</span>Perfil</button>
   </div>
 </nav>
 
-<!-- ══════════ TOAST ══════════ -->
-<div class="toast" id="toast"></div>
-
+<!-- ===== Toast ===== -->
+<div class="toast" id="toast" role="alert" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.2/dist/hls.min.js"></script>
 <script>
-// ═══════════ STATE ═══════════
-let channels = [], groups = {}, myList = [], curCh = null, hls = null;
-let activeProfile = { name:'Usuario 1', emoji:'🎭', bg:'linear-gradient(135deg,#E50914,#8b0000)' };
+// ═══════════════════════════════════════════════════
+//  SERVICIO DE ALMACENAMIENTO (IndexedDB + localStorage)
+// ═══════════════════════════════════════════════════
+const StorageService = (() => {
+  const DB_NAME = 'dulcinea_iptv_db';
+  const DB_VERSION = 2;
+  const STORE_LISTS = 'lists';
+  const STORE_FAVORITES = 'favorites';
+  const STORE_PROFILES = 'profiles';
+  let db = null;
+  let dbReady = false;
 
-try { myList = JSON.parse(localStorage.getItem('ds_mylist') || '[]'); } catch {}
-try { const p = JSON.parse(localStorage.getItem('ds_profile')||'null'); if(p) activeProfile=p; } catch {}
-
-// ═══════════ UTILS ═══════════
-const $  = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
-
-function esc(s){
-  return String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
-function attr(s,k){
-  const m = String(s||'').match(new RegExp(k+'\\s*=\\s*["\\\']([^"\\\']*)["\\\']','i'));
-  return m ? m[1] : '';
-}
-
-function normText(s){
-  return String(s||'').toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .replace(/[_|:;,.()[\]{}\-]+/g,' ');
-}
-
-// MEJORA: heurísticas ampliadas para detectar series y películas
-function isSeriesItem(c){
-  const s = normText((c.group||'') + ' ' + (c.name||''));
-  return /\b(series|serie|tv series|tv shows|shows|temporada|temporadas|season|seasons|episodio|episodios|episod|seriado|seriados|novela|novelas|drama|telenovela|mini serie|miniserie|anime)\b/.test(s);
-}
-
-function isMovieItem(c){
-  if(isSeriesItem(c)) return false;
-  const s = normText((c.group||'') + ' ' + (c.name||''));
-  return /\b(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largometraje|cortometraje)\b/.test(s);
-}
-
-function isLiveItem(c){
-  const s=normText((c.group||'')+' '+(c.name||''));
-  return /\b(en vivo|envivo|live|directo|canales|channel|channels|tv en vivo)\b/.test(s);
-}
-function toast(msg){
-  const t=$('#toast'); t.textContent=msg; t.classList.add('show');
-  clearTimeout(window._toast); window._toast=setTimeout(()=>t.classList.remove('show'),2600);
-}
-function groupIcon(g){
-  g=g.toLowerCase();
-  if(/acci[óo]n|action/.test(g))return '🔥';
-  if(/comed/.test(g))return '😂';
-  if(/terror|horror/.test(g))return '👻';
-  if(/anime/.test(g))return '⛩️';
-  if(/documental/.test(g))return '🎬';
-  if(/deporte|sport/.test(g))return '⚽';
-  if(/noticias|news/.test(g))return '📰';
-  if(/m[úu]sica|music/.test(g))return '🎵';
-  if(/infantil|ni[ñn]o|kids/.test(g))return '🧸';
-  if(/serie|series|drama|temporada|season|tv shows/.test(g))return '📺';
-  if(/pel[íi]cula|movie|movies|cine|cinema|film|films|vod/.test(g))return '🎥';
-  if(/vivo|live|directo/.test(g))return '📡';
-  return '📂';
-}
-
-// ═══════════ M3U PARSER (MEJORA: sin límite de 5 por categoría) ═══════════
-function parseM3U(text){
-  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/);
-  const out=[], seen=new Set();
-  let meta=null;
-  for(let i=0;i<lines.length;i++){
-    const line=lines[i].trim();
-    if(!line) continue;
-    if(line.toUpperCase().startsWith('#EXTINF')){
-      const comma=line.indexOf(',');
-      const group=attr(line,'group-title')||'Sin categoría';
-      meta={
-        name:(comma>=0?line.slice(comma+1).trim():'Canal')||'Canal',
-        group,
-        logo:attr(line,'tvg-logo'),
-        id:attr(line,'tvg-id')
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      if (db && dbReady) return resolve(db);
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = (ev) => {
+        const d = ev.target.result;
+        if (!d.objectStoreNames.contains(STORE_LISTS)) {
+          const store = d.createObjectStore(STORE_LISTS, { keyPath: 'id' });
+          store.createIndex('updatedAt', 'updatedAt', { unique: false });
+        }
+        if (!d.objectStoreNames.contains(STORE_FAVORITES)) {
+          const store = d.createObjectStore(STORE_FAVORITES, { keyPath: 'url' });
+          store.createIndex('addedAt', 'addedAt', { unique: false });
+        }
+        if (!d.objectStoreNames.contains(STORE_PROFILES)) {
+          d.createObjectStore(STORE_PROFILES, { keyPath: 'id' });
+        }
       };
-    }else if(!line.startsWith('#') && /^(https?|rtmp|rtsp):\/\//i.test(line)){
-      if(meta){
-        const url=line;
-        // Solo evitar duplicados exactos por URL
-        if(!seen.has(url)){
-          out.push({...meta,url});
-          seen.add(url);
-        }
-        meta=null;
-      }
-    }
-  }
-  return out;
-}
-
-// ═══════════ SET CHANNELS ═══════════
-function setChannels(items){
-  channels=items; groups=Object.create(null);
-  for(const c of items){
-    const g=c.group||'Sin categoría';
-    (groups[g]||(groups[g]=[])).push(c);
-  }
-  updateHero(); renderRows(); updateSidebarCats();
-  localStorage.setItem('ds_count',String(items.length));
-  toast(`✓ Cargados ${items.length} elementos`);
-}
-
-// ═══════════ HERO ═══════════
-function updateHero(){
-  if(!channels.length) return;
-  const f=channels[Math.floor(Math.random()*Math.min(channels.length,15))];
-  curCh=curCh||f;
-  $('#heroTitle').textContent=f.name;
-  $('#heroSub').textContent=`${f.group||'Sin categoría'} • Selecciona Reproducir para comenzar.`;
-  const bg=$('#heroBg');
-  bg.innerHTML='';
-  if(f.logo){
-    const img=document.createElement('img');
-    img.src=f.logo; img.alt=''; img.loading='eager'; img.decoding='async';
-    img.onerror=()=>img.remove();
-    bg.appendChild(img);
-  }
-  const grad=document.createElement('div');
-  grad.style.cssText='position:absolute;inset:0;background:linear-gradient(120deg,#0d0821,#1a0915,#0a0a18)';
-  bg.appendChild(grad);
-  $('#heroPlayBtn').onclick=()=>playChannel(f);
-  $('#heroInfoBtn').onclick=()=>openDetail(f);
-}
-
-// ═══════════ RENDER ROWS OPTIMIZADO ═══════════
-const INITIAL_PER_ROW=5;
-const BATCH_PER_ROW=5;
-
-function renderRows(){
-  const cont=$('#rowsCont'); cont.replaceChildren();
-  if(!channels.length){
-    cont.innerHTML=`<div class="empty-wrap"><div class="ei">📺</div><h3>Sin contenido cargado</h3><p>Carga tu lista M3U para ver tus canales organizados por categorías.</p><button class="btn-red" onclick="openDrawer()" style="margin-top:8px">📂 Cargar lista M3U</button></div>`;
-    return;
-  }
-
-  const mySet=new Set(myList);
-  const myChans=channels.filter(c=>mySet.has(c.url));
-  if(myChans.length) cont.appendChild(buildRow('⭐ Mi lista',myChans));
-
-  if(curCh){
-    const recent=[curCh];
-    for(const c of channels){
-      if(c.url!==curCh.url && recent.length<10) recent.push(c);
-      if(recent.length>=10) break;
-    }
-    cont.appendChild(buildRow('▶ Continuar viendo',recent));
-  }
-
-  // Secciones inteligentes: ahora filtran sobre TODOS los canales (sin límite previo)
-  const seriesItems=channels.filter(isSeriesItem);
-  const movieItems=channels.filter(isMovieItem);
-
-  if(movieItems.length) cont.appendChild(buildRow('🎬 Cine y películas',movieItems,'peliculas'));
-  if(seriesItems.length) cont.appendChild(buildRow('📺 Series',seriesItems,'series'));
-
-  const gNames=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
-  const frag=document.createDocumentFragment();
-  for(const g of gNames) frag.appendChild(buildRow(`${groupIcon(g)} ${g}`,groups[g]));
-  cont.appendChild(frag);
-}
-
-function buildRow(title,items,sectionKey=''){
-  const sec=document.createElement('section');
-  sec.className='cat-row';
-  sec.dataset.rowKey=title;
-  if(sectionKey) sec.dataset.section=sectionKey;
-  sec._items=items;
-  sec._shown=0;
-
-  sec.innerHTML=`
-    <div class="row-hdr">
-      <span class="row-ttl">${esc(title)}</span>
-      <span class="row-exp">Explorar todo ›</span>
-      <span class="row-count">${items.length}</span>
-    </div>
-    <div class="car-wrap">
-      <button class="car-btn lft" aria-label="Anterior">❮</button>
-      <div class="car-track"></div>
-      <button class="car-btn rgt" aria-label="Siguiente">❯</button>
-    </div>`;
-
-  const trk=sec.querySelector('.car-track');
-  sec.querySelector('.lft').addEventListener('click',()=>scrollTrack(trk,-1));
-  sec.querySelector('.rgt').addEventListener('click',()=>scrollTrack(trk,1));
-
-  renderMoreCards(sec);
-
-  if(items.length>sec._shown){
-    const more=document.createElement('button');
-    more.className='row-more';
-    more.type='button';
-    more.textContent=`＋ ${items.length-sec._shown} más`;
-    more.addEventListener('click',()=>{
-      renderMoreCards(sec);
-      if(sec._shown>=sec._items.length) more.remove();
-      else more.textContent=`＋ ${sec._items.length-sec._shown} más`;
-      requestAnimationFrame(()=>trk.scrollTo({left:trk.scrollWidth,behavior:'smooth'}));
+      req.onsuccess = (ev) => { db = ev.target.result; dbReady = true; resolve(db); };
+      req.onerror = (ev) => reject(ev.target.error);
     });
-    trk.appendChild(more);
   }
-  return sec;
-}
 
-function renderMoreCards(sec){
-  const trk=sec.querySelector('.car-track');
-  const more=trk.querySelector('.row-more');
-  if(more) more.remove();
+  function transaction(storeName, mode = 'readonly') {
+    return openDB().then(db => db.transaction(storeName, mode).objectStore(storeName));
+  }
 
-  const end=Math.min(sec._shown+(sec._shown===0?INITIAL_PER_ROW:BATCH_PER_ROW),sec._items.length);
-  const frag=document.createDocumentFragment();
-  for(let i=sec._shown;i<end;i++) frag.appendChild(buildCard(sec._items[i]));
-  trk.appendChild(frag);
-  sec._shown=end;
-
-  if(end<sec._items.length){
-    const moreBtn=document.createElement('button');
-    moreBtn.className='row-more';
-    moreBtn.type='button';
-    moreBtn.textContent=`＋ ${sec._items.length-end} más`;
-    moreBtn.addEventListener('click',()=>{
-      renderMoreCards(sec);
-      requestAnimationFrame(()=>trk.scrollTo({left:trk.scrollWidth,behavior:'smooth'}));
+  function put(storeName, item) {
+    return transaction(storeName, 'readwrite').then(store => {
+      return new Promise((resolve, reject) => {
+        const req = store.put(item);
+        req.onsuccess = () => resolve(item);
+        req.onerror = () => reject(req.error);
+      });
     });
-    trk.appendChild(moreBtn);
-  }
-}
-
-function scrollTrack(trk,dir){
-  trk.scrollBy({left:dir*trk.clientWidth*.8,behavior:'smooth'});
-}
-
-// ═══════════ CARD ═══════════
-function buildCard(c){
-  const div=document.createElement('div');
-  div.className='card'; div.dataset.url=c.url;
-  const inList=myList.includes(c.url);
-
-  const thumb=document.createElement('div'); thumb.className='card-thumb';
-  if(c.logo){
-    const img=document.createElement('img');
-    img.loading='lazy'; img.decoding='async'; img.src=c.logo; img.alt='';
-    img.onerror=()=>{
-      img.remove();
-      if(!thumb.querySelector('.card-fb')){
-        const fb=document.createElement('div');
-        fb.className='card-fb';
-        fb.innerHTML=`<div class="card-fb-icon">📺</div><div class="card-fb-name">${esc(c.name)}</div>`;
-        thumb.insertBefore(fb,thumb.firstChild);
-      }
-    };
-    thumb.appendChild(img);
-  }else{
-    thumb.innerHTML=`<div class="card-fb"><div class="card-fb-icon">📺</div><div class="card-fb-name">${esc(c.name)}</div></div>`;
   }
 
-  const liveBadge=document.createElement('div');
-  liveBadge.className='card-live'; liveBadge.textContent='STREAM';
-  thumb.appendChild(liveBadge);
-
-  const ov=document.createElement('div');
-  ov.className='card-ov';
-  ov.innerHTML=`<div class="card-ov-name">${esc(c.name)}</div><div class="card-ov-btns"><button class="cob play" title="Reproducir">▶</button><button class="cob listbtn" title="${inList?'Quitar de Mi lista':'Añadir a Mi lista'}">${inList?'✓':'＋'}</button><button class="cob infobtn" title="Más información">ℹ</button></div>`;
-  thumb.appendChild(ov);
-
-  const lbl=document.createElement('div'); lbl.className='card-lbl'; lbl.textContent=c.name;
-  const grp=document.createElement('div'); grp.className='card-grp'; grp.textContent=c.group||'';
-
-  div.append(thumb,lbl,grp);
-  ov.querySelector('.play').addEventListener('click',e=>{e.stopPropagation();playChannel(c)});
-  ov.querySelector('.listbtn').addEventListener('click',e=>{e.stopPropagation();toggleMyList(c,div)});
-  ov.querySelector('.infobtn').addEventListener('click',e=>{e.stopPropagation();openDetail(c)});
-  div.addEventListener('click',()=>openDetail(c));
-  return div;
-}
-
-// ═══════════ MY LIST ═══════════
-function toggleMyList(c, cardEl){
-  const idx=myList.indexOf(c.url);
-  if(idx===-1){ myList.push(c.url); toast(`✓ "${c.name}" añadido a Mi lista`); }
-  else { myList.splice(idx,1); toast(`Eliminado de Mi lista`); }
-  localStorage.setItem('ds_mylist',JSON.stringify(myList));
-  // update card button
-  if(cardEl){
-    const btn=cardEl.querySelector('.listbtn');
-    if(btn){ btn.textContent=myList.includes(c.url)?'✓':'＋'; btn.title=myList.includes(c.url)?'Quitar de Mi lista':'Añadir a Mi lista'; }
-  }
-  // update modal
-  const mb=$('#modalListBtn');
-  if(mb && mb._ch && mb._ch.url===c.url){
-    mb.textContent=myList.includes(c.url)?'✓':'＋';
-    mb.title=myList.includes(c.url)?'Quitar de Mi lista':'Añadir a Mi lista';
-  }
-  renderRows();
-}
-
-// ═══════════ DETAIL MODAL ═══════════
-function openDetail(c){
-  $('#modalTtl').textContent=c.name;
-  $('#modalGrp').textContent=c.group||'Sin categoría';
-  $('#modalGrpLbl').textContent=c.group||'Sin categoría';
-  $('#modalDesc').textContent=`Reproducción en directo de ${c.name}. Grupo: ${c.group||'Sin categoría'}. Haz clic en Reproducir para comenzar.`;
-
-  const bg=$('#modalHeroBg');
-  if(c.logo){
-    bg.innerHTML=`<img src="${esc(c.logo)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.5" onerror="this.remove()">`;
-  } else {
-    bg.innerHTML='';
-    bg.style.background='linear-gradient(135deg,#1a0821,#16213e,#0f2060)';
-  }
-
-  const pb=$('#modalPlayBtn');
-  pb.onclick=()=>{ closeDetail(); playChannel(c); };
-
-  const lb=$('#modalListBtn');
-  lb._ch=c;
-  lb.textContent=myList.includes(c.url)?'✓':'＋';
-  lb.title=myList.includes(c.url)?'Quitar de Mi lista':'Añadir a Mi lista';
-  lb.onclick=()=>toggleMyList(c,null);
-
-  $('#modalBg').classList.add('open');
-  document.body.style.overflow='hidden';
-  pushHistoryState({ modal: true });
-}
-function closeDetail(){
-  $('#modalBg').classList.remove('open');
-  document.body.style.overflow='';
-}
-$('#modalX').addEventListener('click',closeDetail);
-$('#modalBg').addEventListener('click',e=>{ if(e.target===$('#modalBg')) closeDetail(); });
-
-// ═══════════ PLAYER ROBUSTO ═══════════
-function setPlayerStatus(msg,kind=''){
-  const el=$('#playerStatus');
-  if(!el) return;
-  el.textContent=msg;
-  el.style.color=kind==='err'?'#ff9cbf':kind==='ok'?'#7dffbf':'#aaa';
-}
-
-function isHlsUrl(url){
-  return /\.m3u8(?:$|[?#])/i.test(url) ||
-         /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
-         /\/(?:hls|hls_live)\//i.test(url);
-}
-
-function mediaErrorText(err){
-  if(!err) return 'No se pudo reproducir.';
-  switch(err.code){
-    case 1:return 'Reproducción cancelada.';
-    case 2:return 'Error de red o servidor.';
-    case 3:return 'Formato o códec no compatible.';
-    case 4:return 'Formato no compatible o URL protegida.';
-    default:return 'No se pudo reproducir.';
-  }
-}
-
-let localStreamProxy=null;
-async function playbackUrl(url){
-  if(localStreamProxy===false) return url;
-  if(localStreamProxy===true) return 'http://127.0.0.1:8765/stream?url='+encodeURIComponent(url);
-  try{
-    const r=await fetch('http://127.0.0.1:8765/health',{cache:'no-store',signal:AbortSignal.timeout(700)});
-    localStreamProxy=r.ok;
-  }catch{ localStreamProxy=false; }
-  return localStreamProxy ? 'http://127.0.0.1:8765/stream?url='+encodeURIComponent(url) : url;
-}
-
-async function playChannel(c){
-  curCh=c;
-  $('#playerName').textContent=c.name;
-  $('#playerGrp').textContent=c.group||'Sin categoría';
-  setPlayerStatus('Preparando reproducción…');
-
-  const lb=$('#playerListBtn');
-  lb._ch=c; lb.textContent=myList.includes(c.url)?'✓':'＋';
-  lb.onclick=()=>toggleMyList(c,null);
-
-  const vid=$('#mainVid');
-  vid.crossOrigin='anonymous';
-
-  try{
-    if(hls){hls.destroy();hls=null;}
-    vid.pause(); vid.removeAttribute('src'); vid.load();
-
-    const isHls=isHlsUrl(c.url);
-    const sourceUrl=await playbackUrl(c.url);
-    $('#playerFs').classList.add('open');
-    document.body.style.overflow='hidden';
-    pushHistoryState({ player: true });
-
-    const onPlaying=()=>setPlayerStatus(isHls?'HLS conectado':'Reproduciendo','ok');
-    const onWaiting=()=>setPlayerStatus('Cargando…');
-    const onStalled=()=>setPlayerStatus('La señal está tardando…');
-    const onError=()=>setPlayerStatus(mediaErrorText(vid.error),'err');
-    vid.onplaying=onPlaying;
-    vid.onwaiting=onWaiting;
-    vid.onstalled=onStalled;
-    vid.onerror=onError;
-
-    if(isHls && window.Hls && Hls.isSupported()){
-      setPlayerStatus('Conectando HLS…');
-      hls=new Hls({
-        enableWorker:true,
-        lowLatencyMode:false,
-        maxBufferLength:12,
-        maxMaxBufferLength:24,
-        backBufferLength:8,
-        capLevelToPlayerSize:true,
-        manifestLoadingMaxRetry:2,
-        levelLoadingMaxRetry:2,
-        fragLoadingMaxRetry:2,
-        fragLoadingRetryDelay:800
+  function get(storeName, key) {
+    return transaction(storeName, 'readonly').then(store => {
+      return new Promise((resolve, reject) => {
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
       });
+    });
+  }
 
-      hls.on(Hls.Events.MEDIA_ATTACHED,()=>hls.loadSource(sourceUrl));
-      hls.on(Hls.Events.MANIFEST_PARSED,()=>{
-        setPlayerStatus('HLS listo. Reproduciendo…');
-        vid.play().catch(()=>setPlayerStatus('Pulsa ▶ para iniciar'));
+  function getAll(storeName) {
+    return transaction(storeName, 'readonly').then(store => {
+      return new Promise((resolve, reject) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
       });
-      hls.on(Hls.Events.ERROR,(_,d)=>{
-        if(!d.fatal) return;
-        if(d.type===Hls.ErrorTypes.NETWORK_ERROR){
-          setPlayerStatus('Error de red. Reintentando…','err');
-          try{hls.startLoad();}catch{}
-        }else if(d.type===Hls.ErrorTypes.MEDIA_ERROR){
-          setPlayerStatus('Recuperando vídeo…');
-          try{hls.recoverMediaError();}catch{}
-        }else{
-          setPlayerStatus('El servidor rechazó el vídeo. Puede requerir acceso directo/proxy.','err');
-          toast('No se pudo reproducir este vídeo');
-        }
+    });
+  }
+
+  function del(storeName, key) {
+    return transaction(storeName, 'readwrite').then(store => {
+      return new Promise((resolve, reject) => {
+        const req = store.delete(key);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
       });
-      hls.attachMedia(vid);
-    }else{
-      setPlayerStatus(isHls?'HLS nativo…':'Abriendo vídeo…');
-      vid.src=sourceUrl;
-      vid.load();
-      vid.play().catch(()=>{
-        setPlayerStatus('Pulsa ▶ para iniciar');
-      });
-    }
-  }catch(e){
-    setPlayerStatus('Error: '+(e.message||'desconocido'),'err');
-    toast('Error al abrir el vídeo');
+    });
   }
-}
 
-function stopPlayer(){
-  const vid=$('#mainVid');
-  vid.onplaying=vid.onwaiting=vid.onstalled=vid.onerror=null;
-  vid.pause();
-  if(hls){hls.destroy();hls=null;}
-  vid.removeAttribute('src'); vid.load();
-  $('#playerFs').classList.remove('open');
-  document.body.style.overflow='';
-  setPlayerStatus('Listo');
-}
-$('#playerBack').addEventListener('click',stopPlayer);
-
-// ═══════════ SIDEBAR ═══════════
-$('#hamburgerBtn').addEventListener('click',()=>{
-  $('#sidebar').classList.toggle('open');
-  $('#sideBackdrop').classList.toggle('open');
-});
-$('#sideBackdrop').addEventListener('click',closeSidebar);
-function closeSidebar(){
-  $('#sidebar').classList.remove('open');
-  $('#sideBackdrop').classList.remove('open');
-}
-
-function updateSidebarCats(){
-  const sec=$('#sbCatSection'), cont=$('#sbCats');
-  if(!channels.length){ sec.style.display='none'; cont.innerHTML=''; return; }
-  sec.style.display='';
-  const gns=Object.keys(groups).sort((a,b)=>a.localeCompare(b)).slice(0,35);
-  cont.innerHTML=gns.map(g=>`<div class="sb-link" onclick="jumpToRow('${esc(g).replace(/'/g,"\\'")}')"><span class="sb-icon">${groupIcon(g)}</span>${esc(g)}</div>`).join('');
-}
-function jumpToRow(name){
-  const rows=$$('.cat-row');
-  for(const r of rows){
-    if(r.dataset.rowKey===`${groupIcon(name)} ${name}`||r.dataset.rowKey===name){
-      r.scrollIntoView({behavior:'smooth',block:'start'}); break;
-    }
+  // Favoritos
+  function addFavorite(channel) {
+    return put(STORE_FAVORITES, { url: channel.url, name: channel.name, group: channel.group, logo: channel.logo, addedAt: Date.now() });
   }
-  closeSidebar();
-}
+  function removeFavorite(url) { return del(STORE_FAVORITES, url); }
+  function getFavorites() { return getAll(STORE_FAVORITES); }
 
-// ═══════════ SEARCH (MEJORA: sin límite de 24 resultados) ═══════════
-$('#searchToggle').addEventListener('click',openSearch);
-$('#searchClose').addEventListener('click',closeSearch);
-let searchTimer=0;
-$('#searchInput').addEventListener('input',()=>{
-  clearTimeout(searchTimer);
-  searchTimer=setTimeout(runSearch,120);
-});
+  // Listas
+  function saveList(list) { return put(STORE_LISTS, list); }
+  function getList(id) { return get(STORE_LISTS, id); }
+  function getAllLists() { return getAll(STORE_LISTS); }
+  function deleteList(id) { return del(STORE_LISTS, id); }
 
-function openSearch(){
-  $('#searchOverlay').classList.add('open');
-  setTimeout(()=>$('#searchInput').focus(),80);
-  pushHistoryState({ search: true });
-}
-function closeSearch(){
-  $('#searchOverlay').classList.remove('open');
-  $('#searchInput').value='';
-  $('#searchGrid').innerHTML='';
-  $('#searchLabel').textContent='Escribe para buscar';
-}
-function runSearch(){
-  const q=$('#searchInput').value.trim().toLowerCase();
-  const grid=$('#searchGrid'); grid.innerHTML='';
-  if(!q){ $('#searchLabel').textContent='Escribe para buscar'; return; }
-  const qn=q.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  const res=[];
-  for(const c of channels){
-    const name=(c.name||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    const grp=(c.group||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    if(name.includes(qn)||grp.includes(qn)){
-      res.push(c);
-    }
-  }
-  $('#searchLabel').textContent=res.length?`${res.length} resultados para "${q}"`:'Sin resultados';
-  const frag=document.createDocumentFragment();
-  res.forEach(c=>frag.appendChild(buildCard(c)));
-  grid.appendChild(frag);
-}
+  // Perfiles
+  function saveProfile(profile) { return put(STORE_PROFILES, profile); }
+  function getProfile(id) { return get(STORE_PROFILES, id); }
+  function getAllProfiles() { return getAll(STORE_PROFILES); }
 
-// ═══════════ DRAWER ═══════════
-function openDrawer(){
-  $('#drawerBg').classList.add('open');
-  $('#drawer').classList.add('open');
-  document.body.style.overflow='hidden';
-  pushHistoryState({ drawer: true });
-}
-function closeDrawer(){
-  $('#drawerBg').classList.remove('open');
-  $('#drawer').classList.remove('open');
-  document.body.style.overflow='';
-}
-$('#drawerBg').addEventListener('click',closeDrawer);
-$('#openM3uBtn').addEventListener('click',openDrawer);
-
-$('#fileInput').addEventListener('change',async e=>{
-  const f=e.target.files?.[0]; if(!f) return;
-  $('#fileName').textContent=f.name;
-  setDStatus('Leyendo '+f.name+'…');
-  try{
-    const text=await f.text();
-    const items=parseM3U(text);
-    if(!items.length) throw new Error('No se encontraron entradas M3U válidas.');
-    setChannels(items); setDStatus(`Lista cargada: ${items.length} canales.`,'ok');
-    setTimeout(closeDrawer,900); $('#fileInput').value='';
-  } catch(e){ setDStatus('Error: '+e.message,'err'); }
-});
-
-$('#urlMode').addEventListener('change',()=>{
-  const v=$('#urlMode').value;
-  $('#proxyField').style.display=(v==='proxy'||v==='auto')?'block':'none';
-});
-
-async function fetchM3U(url){
-  const mode=$('#urlMode').value, proxy=$('#proxyInput').value.trim();
-  const local=async()=>{
-    const r=await fetch('http://127.0.0.1:8765/playlist?url='+encodeURIComponent(url),{cache:'no-store'});
-    const t=await r.text(); if(!r.ok) throw new Error('HTTP '+r.status);
-    return {text:t,method:'Termux local'};
-  };
-  const direct=async()=>{
-    const r=await fetch(url,{mode:'cors',redirect:'follow',cache:'no-store'});
-    const t=await r.text(); if(!r.ok) throw new Error('HTTP '+r.status);
-    return {text:t,method:'directo'};
-  };
-  if(mode==='proxy'){
-    if(!proxy) throw new Error('Falta la URL del proxy.');
-    const ep=proxy.endsWith('=')||proxy.endsWith('&')?proxy+encodeURIComponent(url):proxy+(proxy.includes('?')?'&url=':'?url=')+encodeURIComponent(url);
-    const r=await fetch(ep,{mode:'cors',redirect:'follow',cache:'no-store'});
-    const t=await r.text(); if(!r.ok) throw new Error('HTTP '+r.status);
-    return {text:t,method:'proxy propio'};
-  }
-  if(mode!=='direct'){try{return await local();}catch(e){setDStatus('Termux no disponible. Probando directo…');}}
-  try{return await direct();}catch(e){throw new Error('No se pudo cargar: '+e.message);}
-}
-
-$('#loadBtn').addEventListener('click',async()=>{
-  const u=$('#urlInput').value.trim();
-  if(!u){setDStatus('Pega una URL primero.','err');return;}
-  try{new URL(u);}catch{setDStatus('URL no válida.','err');return;}
-  setDStatus('Conectando…');
-  try{
-    const res=await fetchM3U(u);
-    const items=parseM3U(res.text);
-    if(!items.length) throw new Error('La respuesta no parece una lista M3U válida.');
-    setChannels(items); setDStatus(`Cargado (${res.method}): ${items.length} canales.`,'ok');
-    setTimeout(closeDrawer,900);
-  } catch(e){setDStatus('Error: '+e.message,'err');}
-});
-
-$('#demoBtn').addEventListener('click',()=>{
-  const demo=`#EXTM3U
-#EXTINF:-1 group-title="Acción",Canal Acción 1
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 group-title="Acción",Canal Acción 2
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 group-title="Comedia",Canal Comedia 1
-https://test-streams.mux.dev/test_001/stream.m3u8
-#EXTINF:-1 group-title="Comedia",Canal Comedia 2
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 group-title="Terror",Canal Terror 1
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 group-title="Anime",Canal Anime 1
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 group-title="Documentales",Documental 1
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 group-title="Deportes",Canal Deporte 1
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 group-title="Noticias",Canal Noticias 1
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 group-title="En vivo",Canal Live 1
-https://test-streams.mux.dev/test_001/stream.m3u8`;
-  setChannels(parseM3U(demo)); setDStatus('Demo cargado.','ok'); setTimeout(closeDrawer,800);
-});
-
-function setDStatus(msg,type=''){
-  const el=$('#dStatus'); el.textContent=msg;
-  el.className='dstatus'+(type?' '+type:'');
-}
-
-// ═══════════ PROFILES ═══════════
-function openProfiles(){ 
-  $('#profilesScreen').classList.add('open');
-  pushHistoryState({ profiles: true });
-}
-function closeProfiles(){ $('#profilesScreen').classList.remove('open'); }
-function switchProfile(name,emoji,bg){
-  activeProfile={name,emoji,bg};
-  localStorage.setItem('ds_profile',JSON.stringify(activeProfile));
-  $('#activePic').style.background=bg;
-  $('#activePic').textContent=emoji;
-  closeProfiles(); toast(`Perfil: ${name}`);
-}
-// init profile pic
-(()=>{
-  $('#activePic').style.background=activeProfile.bg||'linear-gradient(135deg,#E50914,#8b0000)';
-  $('#activePic').textContent=activeProfile.emoji||'🎭';
+  return { addFavorite, removeFavorite, getFavorites, saveList, getList, getAllLists, deleteList, saveProfile, getProfile, getAllProfiles };
 })();
 
-// ═══════════ MANEJO DEL HISTORIAL (evita que "Atrás" cierre la página) ═══════════
-let historyLock = false;
-
-function pushHistoryState(state) {
-  if (!historyLock) {
-    historyLock = true;
-    history.pushState(state || { modal: true }, '');
-    setTimeout(() => { historyLock = false; }, 100);
+// ═══════════════════════════════════════════════════
+//  SERVICIO DE PARSEO M3U (MEJORADO CON tvg-type)
+// ═══════════════════════════════════════════════════
+const M3UParser = (() => {
+  function normalize(str) {
+    return String(str || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[_|:;,.()[\]{}\-]+/g, ' ');
   }
-}
 
-window.addEventListener('popstate', (e) => {
-  const isOpen = 
-    $('#modalBg').classList.contains('open') ||
-    $('#playerFs').classList.contains('open') ||
-    $('#searchOverlay').classList.contains('open') ||
-    $('#drawer').classList.contains('open') ||
-    $('#profilesScreen').classList.contains('open');
+  // Clasificación avanzada: prioriza tvg-type, luego group-title y nombre
+  function classify(channel) {
+    // 1. Usar tvg-type si existe
+    if (channel.tvgType) {
+      const t = channel.tvgType.toLowerCase();
+      if (t === 'series' || t === 'serie') return 'series';
+      if (t === 'movie' || t === 'pelicula') return 'pelicula';
+      if (t === 'live' || t === 'radio' || t === 'tv' || t === 'tvshow') return 'envivo';
+    }
 
-  if (isOpen) {
-    closeDetail();
-    stopPlayer();
-    closeSearch();
-    closeDrawer();
-    closeProfiles();
-    history.replaceState({ modal: false }, '');
-    e.preventDefault();
-  } else {
-    // Si no hay nada abierto, permite la navegación normal
+    // 2. Heurísticas sobre group + name
+    const combined = normalize((channel.group || '') + ' ' + (channel.name || ''));
+    
+    // Series: temporadas, episodios, etc.
+    if (/\b(series|serie|tv series|tv shows|shows|temporada|temporadas|season|seasons|episodio|episodios|episod|seriado|seriados|novela|novelas|drama|telenovela|mini serie|miniserie|anime)\b/.test(combined)) {
+      return 'series';
+    }
+    
+    // Películas
+    if (/\b(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largo|largometraje|corto|cortometraje)\b/.test(combined)) {
+      return 'pelicula';
+    }
+    
+    // En vivo
+    if (/\b(en vivo|envivo|live|directo|canales|channel|channels|tv en vivo|streaming|stream|radio|tv live|live tv|en directo)\b/.test(combined)) {
+      return 'envivo';
+    }
+    
+    return 'general';
   }
-});
 
-// ═══════════ SCROLL NAV ═══════════
-window.addEventListener('scroll',()=>{
-  $('#topNav').classList.toggle('solid',window.scrollY>20);
-});
+  function parse(text) {
+    const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
+    const out = [];
+    const seen = new Set();
+    let meta = null;
 
-// ═══════════ NAV LINKS ═══════════
-function handleNavAction(section){
-  const rows=$$('.cat-row');
-  if(section==='milista'){
-    const r=[...rows].find(r=>r.dataset.rowKey==='⭐ Mi lista');
-    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('Mi lista está vacía');
-  } else if(section==='nuevos'||section==='inicio'){
-    window.scrollTo({top:0,behavior:'smooth'});
-  } else if(section==='envivo'){
-    const r=[...rows].find(r=>r.dataset.section==='envivo') ||
-            [...rows].find(r=>r.dataset.rowKey&&/vivo|live|directo|canales/i.test(r.dataset.rowKey));
-    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('No hay canales en vivo en la lista actual');
-  } else if(section==='series'){
-    const r=[...rows].find(r=>r.dataset.section==='series') ||
-            [...rows].find(r=>r.dataset.rowKey&&/serie|series|drama|temporada|season|tv shows/i.test(r.dataset.rowKey));
-    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('No se detectaron series en la lista actual');
-  } else if(section==='peliculas'){
-    const r=[...rows].find(r=>r.dataset.section==='peliculas') ||
-            [...rows].find(r=>r.dataset.rowKey&&/pelic|película|movie|movies|cine|film|films|vod/i.test(r.dataset.rowKey));
-    r?r.scrollIntoView({behavior:'smooth',block:'start'}):toast('No se detectaron películas en la lista actual');
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line.toUpperCase().startsWith('#EXTINF')) {
+        const comma = line.indexOf(',');
+        const group = /group-title\s*=\s*["']([^"']*)["']/.exec(line)?.[1] || 'Sin categoría';
+        const logo = /tvg-logo\s*=\s*["']([^"']*)["']/.exec(line)?.[1] || '';
+        const id = /tvg-id\s*=\s*["']([^"']*)["']/.exec(line)?.[1] || '';
+        const tvgType = /tvg-type\s*=\s*["']([^"']*)["']/.exec(line)?.[1] || '';
+
+        meta = {
+          name: (comma >= 0 ? line.slice(comma + 1).trim() : 'Canal') || 'Canal',
+          group,
+          logo,
+          id,
+          tvgType,  // ← NUEVO
+        };
+      } else if (!line.startsWith('#') && /^(https?|rtmp|rtsp):\/\//i.test(line)) {
+        if (meta) {
+          const url = line;
+          if (!seen.has(url)) {
+            // Clasificar automáticamente
+            const tipo = classify(meta);
+            out.push({ ...meta, url, _type: tipo });
+            seen.add(url);
+          }
+          meta = null;
+        }
+      }
+    }
+    return out;
   }
-}
 
-$$('.nav-links a').forEach(a=>{
-  a.addEventListener('click',e=>{
-    e.preventDefault();
-    $$('.nav-links a').forEach(x=>x.classList.remove('active'));
-    a.classList.add('active');
-    handleNavAction(a.dataset.nav);
-  });
-});
-$$('.sb-link[data-nav]').forEach(a=>{
-  a.addEventListener('click',()=>{
-    handleNavAction(a.dataset.nav);
+  return { parse, classify };
+})();
+
+// ═══════════════════════════════════════════════════
+//  SERVICIO DE REPRODUCTOR (HLS + fallback)
+// ═══════════════════════════════════════════════════
+const PlayerService = (() => {
+  let hls = null;
+  let currentChannel = null;
+  let retryCount = 0;
+  const MAX_RETRIES = 2;
+  let abortController = null;
+
+  function destroyHls() {
+    if (hls) { hls.destroy(); hls = null; }
+  }
+
+  function isHlsUrl(url) {
+    return /\.m3u8(?:$|[?#])/i.test(url) ||
+           /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
+           /\/(?:hls|hls_live)\//i.test(url);
+  }
+
+  async function fetchWithTimeout(url, timeout = 15000) {
+    abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), timeout);
+    try {
+      const resp = await fetch(url, { signal: abortController.signal, mode: 'cors', cache: 'no-store' });
+      clearTimeout(timeoutId);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.text();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  }
+
+  async function play(channel, videoElement, statusCallback, errorCallback) {
+    if (!videoElement) return;
+    currentChannel = channel;
+    retryCount = 0;
+    destroyHls();
+    videoElement.pause();
+    videoElement.removeAttribute('src');
+    videoElement.load();
+
+    statusCallback('Preparando...');
+
+    const url = channel.url;
+    const isHls = isHlsUrl(url);
+
+    // Intento de proxy local (si existe)
+    let playUrl = url;
+    try {
+      const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 500);
+      if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
+    } catch {}
+
+    try {
+      if (isHls && window.Hls && Hls.isSupported()) {
+        statusCallback('Conectando HLS...');
+        hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          maxBufferLength: 12,
+          maxMaxBufferLength: 24,
+          backBufferLength: 8,
+          capLevelToPlayerSize: true,
+          manifestLoadingMaxRetry: 2,
+          levelLoadingMaxRetry: 2,
+          fragLoadingMaxRetry: 2,
+          fragLoadingRetryDelay: 800,
+          abrEwmaDefaultEstimate: 1e6,
+        });
+
+        hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+          hls.loadSource(playUrl);
+        });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          statusCallback('HLS listo. Reproduciendo...', 'ok');
+          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+        });
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          if (data.fatal) {
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              statusCallback('Error de red. Reintentando...', 'err');
+              if (retryCount < MAX_RETRIES) {
+                retryCount++;
+                setTimeout(() => hls.startLoad(), 1000);
+              } else {
+                errorCallback('No se pudo conectar después de varios intentos.');
+              }
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              statusCallback('Recuperando vídeo...', 'err');
+              hls.recoverMediaError();
+            } else {
+              errorCallback('Error fatal en la reproducción.');
+            }
+          }
+        });
+        hls.attachMedia(videoElement);
+      } else {
+        // Fallback nativo
+        statusCallback('Abriendo vídeo...');
+        videoElement.src = playUrl;
+        videoElement.load();
+        videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+      }
+    } catch (err) {
+      errorCallback('Error al iniciar: ' + err.message);
+    }
+  }
+
+  function stop(videoElement) {
+    destroyHls();
+    if (videoElement) {
+      videoElement.pause();
+      videoElement.removeAttribute('src');
+      videoElement.load();
+    }
+    currentChannel = null;
+    if (abortController) { abortController.abort(); abortController = null; }
+  }
+
+  function getCurrentChannel() { return currentChannel; }
+
+  return { play, stop, getCurrentChannel, isHlsUrl };
+})();
+
+// ═══════════════════════════════════════════════════
+//  APLICACIÓN PRINCIPAL
+// ═══════════════════════════════════════════════════
+const App = (() => {
+  // Estado
+  let channels = [];
+  let groups = {};
+  let favorites = [];
+  let currentListMeta = { id: null, name: '', url: '', method: '', updatedAt: 0 };
+  let activeProfile = { name: 'Usuario 1', emoji: '🎭', bg: 'linear-gradient(135deg,#E50914,#8b0000)' };
+  let curChannel = null;
+  let rowObserver = null;
+  let allRowsData = [];
+  let lastFocusedElement = null;
+
+  // DOM refs
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => document.querySelectorAll(s);
+
+  // ── Utils ──
+  function toast(msg, type = 'info') {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + type;
+    clearTimeout(window._toast);
+    window._toast = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  function esc(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function showLoadingBar(percent) {
+    const bar = $('#loadingBar');
+    if (percent >= 100) {
+      bar.classList.add('done');
+      setTimeout(() => { bar.style.width = '0%'; bar.classList.remove('done'); }, 600);
+    } else {
+      bar.style.width = Math.min(percent, 99) + '%';
+      bar.classList.remove('done');
+    }
+  }
+
+  function groupIcon(g) {
+    const map = {
+      'acci[óo]n': '🔥', 'action': '🔥',
+      'comed': '😂',
+      'terror': '👻', 'horror': '👻',
+      'anime': '⛩️',
+      'documental': '🎬',
+      'deporte': '⚽', 'sport': '⚽',
+      'noticias': '📰', 'news': '📰',
+      'm[úu]sica': '🎵', 'music': '🎵',
+      'infantil': '🧸', 'ni[ñn]o': '🧸', 'kids': '🧸',
+      'serie': '📺', 'series': '📺', 'drama': '📺', 'temporada': '📺',
+      'pel[íi]cula': '🎥', 'movie': '🎥', 'cine': '🎥', 'film': '🎥',
+      'vivo': '📡', 'live': '📡', 'directo': '📡'
+    };
+    const l = g.toLowerCase();
+    for (const [pat, icon] of Object.entries(map)) {
+      if (new RegExp(pat).test(l)) return icon;
+    }
+    return '📂';
+  }
+
+  // ── Carga de lista ──
+  function setChannels(items, opts = {}) {
+    channels = Array.isArray(items) ? items : [];
+    groups = {};
+    for (const c of channels) {
+      const g = c.group || 'Sin categoría';
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(c);
+    }
+    updateHero();
+    renderRowsLazy();
+    updateSidebarCats();
+    if (!opts.silent) toast(`✓ Cargados ${channels.length} elementos (${channels.filter(c=>c._type==='envivo').length} Live, ${channels.filter(c=>c._type==='pelicula').length} Movie, ${channels.filter(c=>c._type==='series').length} Series)`);
+  }
+
+  // ── Hero ──
+  function updateHero() {
+    if (!channels.length) return;
+    const f = channels[Math.floor(Math.random() * Math.min(channels.length, 15))];
+    curChannel = curChannel || f;
+    $('#heroTitle').textContent = f.name;
+    $('#heroSub').textContent = `${f.group || 'Sin categoría'} • Selecciona Reproducir para comenzar.`;
+    const bg = $('#heroBg');
+    bg.innerHTML = '';
+    if (f.logo) {
+      const img = document.createElement('img');
+      img.src = f.logo;
+      img.alt = '';
+      img.loading = 'eager';
+      img.decoding = 'async';
+      img.onerror = () => img.remove();
+      bg.appendChild(img);
+    }
+    const grad = document.createElement('div');
+    grad.style.cssText = 'position:absolute;inset:0;background:linear-gradient(120deg,#0d0821,#1a0915,#0a0a18)';
+    bg.appendChild(grad);
+    $('#heroPlayBtn').onclick = () => playChannel(f);
+    $('#heroInfoBtn').onclick = () => openDetail(f);
+  }
+
+  // ── Renderizado perezoso con clasificación automática ──
+  function buildRowPlaceholder(title, count) {
+    const div = document.createElement('div');
+    div.className = 'cat-row';
+    div.dataset.rowKey = title;
+    div.dataset.count = count;
+    div.innerHTML = `
+      <div class="row-hdr">
+        <span class="row-ttl">${esc(title)}</span>
+        <span class="row-count">${count}</span>
+      </div>
+      <div class="car-wrap">
+        <div class="car-track" style="padding:12px 2px;gap:5px;display:flex;">
+          ${Array.from({ length: Math.min(5, count) }, () => `
+            <div class="card" style="width:clamp(130px,14vw,210px);background:var(--bg3);border-radius:var(--card-r);aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:12px;">
+              <span class="spinner-inline"></span> Cargando...
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+    return div;
+  }
+
+  function buildRow(title, items, sectionKey = '') {
+    const sec = document.createElement('section');
+    sec.className = 'cat-row';
+    sec.dataset.rowKey = title;
+    if (sectionKey) sec.dataset.section = sectionKey;
+    sec._items = items;
+    sec._shown = 0;
+
+    sec.innerHTML = `
+      <div class="row-hdr">
+        <span class="row-ttl">${esc(title)}</span>
+        <span class="row-exp">Explorar todo ›</span>
+        <span class="row-count">${items.length}</span>
+      </div>
+      <div class="car-wrap">
+        <button class="car-btn lft" aria-label="Anterior">❮</button>
+        <div class="car-track"></div>
+        <button class="car-btn rgt" aria-label="Siguiente">❯</button>
+      </div>
+    `;
+
+    const trk = sec.querySelector('.car-track');
+    sec.querySelector('.lft').addEventListener('click', () => scrollTrack(trk, -1));
+    sec.querySelector('.rgt').addEventListener('click', () => scrollTrack(trk, 1));
+
+    renderMoreCards(sec);
+    return sec;
+  }
+
+  function renderMoreCards(sec) {
+    const trk = sec.querySelector('.car-track');
+    const more = trk.querySelector('.row-more');
+    if (more) more.remove();
+
+    const end = Math.min(sec._shown + (sec._shown === 0 ? 5 : 5), sec._items.length);
+    const frag = document.createDocumentFragment();
+    for (let i = sec._shown; i < end; i++) {
+      frag.appendChild(buildCard(sec._items[i]));
+    }
+    trk.appendChild(frag);
+    sec._shown = end;
+
+    if (end < sec._items.length) {
+      const moreBtn = document.createElement('button');
+      moreBtn.className = 'row-more';
+      moreBtn.type = 'button';
+      moreBtn.textContent = `＋ ${sec._items.length - end} más`;
+      moreBtn.addEventListener('click', () => {
+        renderMoreCards(sec);
+        requestAnimationFrame(() => trk.scrollTo({ left: trk.scrollWidth, behavior: 'smooth' }));
+      });
+      trk.appendChild(moreBtn);
+    }
+  }
+
+  function scrollTrack(trk, dir) {
+    trk.scrollBy({ left: dir * trk.clientWidth * 0.8, behavior: 'smooth' });
+  }
+
+  // ── Construcción de tarjeta con badge de tipo ──
+  function buildCard(c) {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.dataset.url = c.url;
+    const inFav = favorites.some(f => f.url === c.url);
+
+    const thumb = document.createElement('div');
+    thumb.className = 'card-thumb';
+    if (c.logo) {
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.src = c.logo;
+      img.alt = '';
+      img.onerror = () => {
+        img.remove();
+        if (!thumb.querySelector('.card-fb')) {
+          const fb = document.createElement('div');
+          fb.className = 'card-fb';
+          fb.innerHTML = `<div class="card-fb-icon">📺</div><div class="card-fb-name">${esc(c.name)}</div>`;
+          thumb.prepend(fb);
+        }
+      };
+      thumb.appendChild(img);
+    } else {
+      thumb.innerHTML = `<div class="card-fb"><div class="card-fb-icon">📺</div><div class="card-fb-name">${esc(c.name)}</div></div>`;
+    }
+
+    // Badge "STREAM"
+    const live = document.createElement('div');
+    live.className = 'card-live';
+    live.textContent = 'STREAM';
+    thumb.appendChild(live);
+
+    // Badge de tipo (Live, Movie, Series)
+    const typeMap = {
+      'envivo': { label: '🔴 LIVE', cls: 'live' },
+      'pelicula': { label: '🎬 MOVIE', cls: 'movie' },
+      'series': { label: '📺 SERIE', cls: 'series' }
+    };
+    const info = typeMap[c._type];
+    if (info) {
+      const badge = document.createElement('div');
+      badge.className = 'card-type-badge ' + info.cls;
+      badge.textContent = info.label;
+      thumb.appendChild(badge);
+    }
+
+    // Overlay
+    const ov = document.createElement('div');
+    ov.className = 'card-ov';
+    ov.innerHTML = `
+      <div class="card-ov-name">${esc(c.name)}</div>
+      <div class="card-ov-btns">
+        <button class="cob play" title="Reproducir">▶</button>
+        <button class="cob listbtn" title="${inFav ? 'Quitar de Mi lista' : 'Añadir a Mi lista'}">${inFav ? '✓' : '＋'}</button>
+        <button class="cob infobtn" title="Más información">ℹ</button>
+      </div>
+    `;
+    thumb.appendChild(ov);
+
+    const lbl = document.createElement('div');
+    lbl.className = 'card-lbl';
+    lbl.textContent = c.name;
+    const grp = document.createElement('div');
+    grp.className = 'card-grp';
+    grp.textContent = c.group || '';
+
+    div.append(thumb, lbl, grp);
+
+    ov.querySelector('.play').addEventListener('click', e => { e.stopPropagation(); playChannel(c); });
+    ov.querySelector('.listbtn').addEventListener('click', e => { e.stopPropagation(); toggleFavorite(c, div); });
+    ov.querySelector('.infobtn').addEventListener('click', e => { e.stopPropagation(); openDetail(c); });
+    div.addEventListener('click', () => openDetail(c));
+    return div;
+  }
+
+  // ── Renderizado con clasificación automática ──
+  function renderRowsLazy() {
+    const cont = $('#rowsCont');
+    cont.replaceChildren();
+    if (!channels.length) {
+      cont.innerHTML = `
+        <div class="empty-wrap">
+          <div class="ei">📺</div>
+          <h3>Sin contenido cargado</h3>
+          <p>Carga tu lista M3U para ver tus canales organizados por categorías.</p>
+          <button class="btn-red" onclick="App.openDrawer()" style="margin-top:8px">📂 Cargar lista M3U</button>
+        </div>
+      `;
+      return;
+    }
+
+    // Asegurar que cada canal tenga _type
+    const categorized = channels.map(c => {
+      if (!c._type) c._type = M3UParser.classify(c);
+      return c;
+    });
+
+    // Agrupar por tipo
+    const liveChannels = categorized.filter(c => c._type === 'envivo');
+    const movieChannels = categorized.filter(c => c._type === 'pelicula');
+    const seriesChannels = categorized.filter(c => c._type === 'series');
+    // El resto (general) irá en sus grupos originales
+
+    const rowData = [];
+
+    // 1. En vivo
+    if (liveChannels.length) {
+      rowData.push({ title: '📡 En vivo', items: liveChannels, key: 'envivo' });
+    }
+
+    // 2. Películas
+    if (movieChannels.length) {
+      rowData.push({ title: '🎬 Películas', items: movieChannels, key: 'peliculas' });
+    }
+
+    // 3. Series
+    if (seriesChannels.length) {
+      rowData.push({ title: '📺 Series', items: seriesChannels, key: 'series' });
+    }
+
+    // 4. Mi lista (favoritos)
+    const favChans = categorized.filter(c => favorites.some(f => f.url === c.url));
+    if (favChans.length) {
+      rowData.push({ title: '⭐ Mi lista', items: favChans, key: 'milista' });
+    }
+
+    // 5. Continuar viendo
+    if (curChannel) {
+      const recent = [curChannel, ...categorized.filter(c => c.url !== curChannel.url).slice(0, 9)];
+      rowData.push({ title: '▶ Continuar viendo', items: recent, key: 'recent' });
+    }
+
+    // 6. Resto de grupos (excluyendo los ya mostrados)
+    const usedGroups = new Set(['envivo', 'peliculas', 'series', 'milista', 'recent']);
+    const sortedGroups = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+    for (const g of sortedGroups) {
+      if (usedGroups.has(g)) continue;
+      const items = groups[g];
+      if (items.length) {
+        rowData.push({ title: `${groupIcon(g)} ${g}`, items, key: g });
+      }
+    }
+
+    allRowsData = rowData;
+
+    // Crear placeholders
+    for (const data of rowData) {
+      const placeholder = buildRowPlaceholder(data.title, data.items.length);
+      placeholder.dataset.rowKey = data.key;
+      placeholder._rowData = data;
+      cont.appendChild(placeholder);
+    }
+
+    // Observar placeholders
+    if (rowObserver) rowObserver.disconnect();
+    rowObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const placeholder = entry.target;
+          const data = placeholder._rowData;
+          if (data) {
+            const row = buildRow(data.title, data.items, data.key);
+            placeholder.replaceWith(row);
+            rowObserver.unobserve(placeholder);
+          }
+        }
+      }
+    }, { rootMargin: '200px' });
+
+    for (const ph of cont.querySelectorAll('.cat-row')) {
+      rowObserver.observe(ph);
+    }
+  }
+
+  // ── Favoritos (IndexedDB) ──
+  async function toggleFavorite(c, cardEl) {
+    const inFav = favorites.some(f => f.url === c.url);
+    try {
+      if (inFav) {
+        await StorageService.removeFavorite(c.url);
+        favorites = favorites.filter(f => f.url !== c.url);
+        toast(`"${c.name}" eliminado de Mi lista`, 'info');
+      } else {
+        await StorageService.addFavorite(c);
+        favorites = await StorageService.getFavorites();
+        toast(`"${c.name}" añadido a Mi lista`, 'success');
+      }
+      // Actualizar UI en tarjeta y modal
+      if (cardEl) {
+        const btn = cardEl.querySelector('.listbtn');
+        if (btn) {
+          btn.textContent = favorites.some(f => f.url === c.url) ? '✓' : '＋';
+          btn.title = favorites.some(f => f.url === c.url) ? 'Quitar de Mi lista' : 'Añadir a Mi lista';
+        }
+      }
+      const mb = $('#modalListBtn');
+      if (mb && mb._ch && mb._ch.url === c.url) {
+        mb.textContent = favorites.some(f => f.url === c.url) ? '✓' : '＋';
+        mb.title = favorites.some(f => f.url === c.url) ? 'Quitar de Mi lista' : 'Añadir a Mi lista';
+      }
+      // Re-renderizar
+      renderRowsLazy();
+    } catch (err) {
+      toast('Error al modificar favoritos: ' + err.message, 'error');
+    }
+  }
+
+  // ── Detalle modal ──
+  function openDetail(c) {
+    $('#modalTtl').textContent = c.name;
+    $('#modalGrp').textContent = c.group || 'Sin categoría';
+    $('#modalGrpLbl').textContent = c.group || 'Sin categoría';
+    const typeLabels = {
+      'envivo': '🔴 En vivo',
+      'pelicula': '🎬 Película',
+      'series': '📺 Serie'
+    };
+    const desc = typeLabels[c._type] || 'Canal';
+    $('#modalDesc').textContent = `${desc}: ${c.name}. Grupo: ${c.group || 'Sin categoría'}. Haz clic en Reproducir para comenzar.`;
+
+    const bg = $('#modalHeroBg');
+    bg.innerHTML = '';
+    if (c.logo) {
+      const img = document.createElement('img');
+      img.src = c.logo;
+      img.alt = '';
+      img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.5';
+      img.onerror = () => img.remove();
+      bg.appendChild(img);
+    } else {
+      bg.style.background = 'linear-gradient(135deg,#1a0821,#16213e,#0f2060)';
+    }
+
+    const pb = $('#modalPlayBtn');
+    pb.onclick = () => { closeDetail(); playChannel(c); };
+
+    const lb = $('#modalListBtn');
+    lb._ch = c;
+    const inFav = favorites.some(f => f.url === c.url);
+    lb.textContent = inFav ? '✓' : '＋';
+    lb.title = inFav ? 'Quitar de Mi lista' : 'Añadir a Mi lista';
+    lb.onclick = () => toggleFavorite(c, null);
+
+    lastFocusedElement = document.activeElement;
+    $('#modalBg').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    $('#modalX').focus();
+  }
+
+  function closeDetail() {
+    $('#modalBg').classList.remove('open');
+    document.body.style.overflow = '';
+    if (lastFocusedElement) lastFocusedElement.focus();
+  }
+
+  // ── Reproducción ──
+  function playChannel(c) {
+    curChannel = c;
+    const vid = $('#mainVid');
+    const statusEl = $('#playerStatus');
+    const nameEl = $('#playerName');
+    const grpEl = $('#playerGrp');
+    nameEl.textContent = c.name;
+    grpEl.textContent = c.group || 'Sin categoría';
+
+    const lb = $('#playerListBtn');
+    lb._ch = c;
+    const inFav = favorites.some(f => f.url === c.url);
+    lb.textContent = inFav ? '✓' : '＋';
+    lb.onclick = () => toggleFavorite(c, null);
+
+    $('#playerFs').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    lastFocusedElement = document.activeElement;
+    $('#playerBack').focus();
+
+    PlayerService.play(c, vid,
+      (msg, type) => {
+        statusEl.textContent = msg;
+        statusEl.style.color = type === 'ok' ? '#7dffbf' : type === 'err' ? '#ff9cbf' : '#aaa';
+      },
+      (errMsg) => {
+        statusEl.textContent = 'Error: ' + errMsg;
+        statusEl.style.color = '#ff9cbf';
+        toast('Error de reproducción: ' + errMsg, 'error');
+        // Botón reintento
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'btn-outline';
+        retryBtn.textContent = 'Reintentar';
+        retryBtn.onclick = () => { retryBtn.remove(); playChannel(c); };
+        statusEl.parentNode.appendChild(retryBtn);
+      }
+    );
+  }
+
+  function stopPlayer() {
+    const vid = $('#mainVid');
+    PlayerService.stop(vid);
+    $('#playerFs').classList.remove('open');
+    document.body.style.overflow = '';
+    if (lastFocusedElement) lastFocusedElement.focus();
+  }
+
+  // ── Sidebar ──
+  function updateSidebarCats() {
+    const sec = $('#sbCatSection');
+    const cont = $('#sbCats');
+    if (!channels.length) { sec.style.display = 'none'; cont.innerHTML = ''; return; }
+    sec.style.display = '';
+    const gns = Object.keys(groups).sort((a, b) => a.localeCompare(b)).slice(0, 35);
+    cont.innerHTML = gns.map(g =>
+      `<div class="sb-link" onclick="App.jumpToRow('${esc(g).replace(/'/g, "\\'")}')">
+        <span class="sb-icon">${groupIcon(g)}</span>${esc(g)}
+      </div>`
+    ).join('');
+  }
+
+  function jumpToRow(name) {
+    const rows = $$('.cat-row');
+    for (const r of rows) {
+      const key = r.dataset.rowKey;
+      if (key === name || key === `${groupIcon(name)} ${name}`) {
+        r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      }
+    }
     closeSidebar();
-  });
-});
-
-// ═══════════ BOTTOM NAV ═══════════
-$$('.bn-btn').forEach(b=>{
-  b.addEventListener('click',()=>{
-    const sec=b.dataset.bnav;
-    if(sec==='search'){openSearch();return;}
-    if(sec==='perfil'){openProfiles();return;}
-    $$('.bn-btn').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    handleNavAction(sec);
-  });
-});
-
-// ═══════════ KEYBOARD ═══════════
-document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){
-    closeDetail(); closeSearch(); closeDrawer(); closeProfiles(); stopPlayer();
   }
-});
 
-// ═══════════ INIT ═══════════
-renderRows();
+  // ── Drawer ──
+  function openDrawer() {
+    $('#drawerBg').classList.add('open');
+    $('#drawer').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    lastFocusedElement = document.activeElement;
+    $('#urlInput').focus();
+  }
+
+  function closeDrawer() {
+    $('#drawerBg').classList.remove('open');
+    $('#drawer').classList.remove('open');
+    document.body.style.overflow = '';
+    if (lastFocusedElement) lastFocusedElement.focus();
+  }
+
+  // ── Búsqueda ──
+  function openSearch() {
+    $('#searchOverlay').classList.add('open');
+    setTimeout(() => $('#searchInput').focus(), 80);
+  }
+
+  function closeSearch() {
+    $('#searchOverlay').classList.remove('open');
+    $('#searchInput').value = '';
+    $('#searchGrid').innerHTML = '';
+    $('#searchLabel').textContent = 'Escribe para buscar';
+  }
+
+  function runSearch(query) {
+    const grid = $('#searchGrid');
+    grid.innerHTML = '';
+    if (!query) { $('#searchLabel').textContent = 'Escribe para buscar'; return; }
+    const qn = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const results = [];
+    for (const c of channels) {
+      const name = (c.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const grp = (c.group || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (name.includes(qn) || grp.includes(qn)) results.push(c);
+    }
+    $('#searchLabel').textContent = results.length ? `${results.length} resultados` : 'Sin resultados';
+    const frag = document.createDocumentFragment();
+    results.forEach(c => frag.appendChild(buildCard(c)));
+    grid.appendChild(frag);
+  }
+
+  // ── Inicialización ──
+  async function init() {
+    // Cargar favoritos
+    try { favorites = await StorageService.getFavorites(); } catch (e) { favorites = []; }
+
+    // Cargar perfil activo desde localStorage
+    try {
+      const p = JSON.parse(localStorage.getItem('ds_profile'));
+      if (p) activeProfile = p;
+    } catch {}
+    $('#activePic').style.background = activeProfile.bg || 'linear-gradient(135deg,#E50914,#8b0000)';
+    $('#activePic').textContent = activeProfile.emoji || '🎭';
+
+    // Restaurar última lista guardada
+    try {
+      const lastId = localStorage.getItem('ds_last_saved_list');
+      if (lastId) {
+        const list = await StorageService.getList(lastId);
+        if (list && Array.isArray(list.channels) && list.channels.length) {
+          currentListMeta = { id: list.id, name: list.name, url: list.url, method: list.method, updatedAt: list.updatedAt };
+          // Asegurar que cada canal tenga _type
+          const withTypes = list.channels.map(c => {
+            if (!c._type) c._type = M3UParser.classify(c);
+            return c;
+          });
+          setChannels(withTypes, { silent: true });
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    // Eventos
+    $('#searchToggle').addEventListener('click', openSearch);
+    $('#searchClose').addEventListener('click', closeSearch);
+    $('#searchInput').addEventListener('input', (e) => {
+      clearTimeout(window._searchTimer);
+      window._searchTimer = setTimeout(() => runSearch(e.target.value), 150);
+    });
+    $('#modalX').addEventListener('click', closeDetail);
+    $('#modalBg').addEventListener('click', (e) => { if (e.target === $('#modalBg')) closeDetail(); });
+    $('#playerBack').addEventListener('click', stopPlayer);
+    $('#hamburgerBtn').addEventListener('click', () => {
+      $('#sidebar').classList.toggle('open');
+      $('#sideBackdrop').classList.toggle('open');
+    });
+    $('#sideBackdrop').addEventListener('click', closeSidebar);
+    $('#openM3uBtn').addEventListener('click', openDrawer);
+
+    // Drawer
+    $('#fileInput').addEventListener('change', async (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      $('#fileName').textContent = f.name;
+      setDStatus('Leyendo ' + f.name + '…');
+      try {
+        const text = await f.text();
+        const items = M3UParser.parse(text);
+        if (!items.length) throw new Error('No se encontraron entradas M3U válidas.');
+        currentListMeta = { id: null, name: f.name.replace(/\.(m3u8?|txt)$/i, '') || 'Lista local', url: '', method: 'archivo', updatedAt: Date.now() };
+        $('#listNameInput').value = currentListMeta.name;
+        setChannels(items);
+        setDStatus(`Lista cargada: ${items.length} elementos.`, 'ok');
+        setTimeout(closeDrawer, 900);
+        $('#fileInput').value = '';
+      } catch (err) { setDStatus('Error: ' + err.message, 'err'); }
+    });
+
+    $('#loadBtn').addEventListener('click', async () => {
+      const u = $('#urlInput').value.trim();
+      if (!u) { setDStatus('Pega una URL primero.', 'err'); return; }
+      try { new URL(u); } catch { setDStatus('URL no válida.', 'err'); return; }
+      setDStatus('Conectando...');
+      showLoadingBar(10);
+      try {
+        const method = $('#urlMode').value;
+        let proxy = '';
+        if (method === 'proxy') proxy = $('#proxyInput').value.trim();
+        let urlToFetch = u;
+        if (method === 'proxy' && proxy) {
+          const sep = proxy.includes('?') ? '&' : '?';
+          urlToFetch = proxy + sep + 'url=' + encodeURIComponent(u);
+        } else if (method === 'auto') {
+          try {
+            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(5000) });
+            if (resp.ok) {
+              const text = await resp.text();
+              const items = M3UParser.parse(text);
+              if (items.length) {
+                currentListMeta = { id: null, name: $('#listNameInput').value.trim() || 'Mi lista IPTV', url: u, method: 'Termux local', updatedAt: Date.now() };
+                setChannels(items);
+                setDStatus(`Cargado (Termux): ${items.length} elementos.`, 'ok');
+                setTimeout(closeDrawer, 900);
+                showLoadingBar(100);
+                return;
+              }
+            }
+          } catch (e) { /* fallback */ }
+        }
+        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(15000) });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const text = await resp.text();
+        const items = M3UParser.parse(text);
+        if (!items.length) throw new Error('No se encontraron entradas M3U válidas.');
+        const autoName = new URL(u).hostname.replace(/^www\./, '');
+        currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || 'Mi lista IPTV', url: u, method: method === 'proxy' ? 'proxy' : 'directo', updatedAt: Date.now() };
+        $('#listNameInput').value = currentListMeta.name;
+        setChannels(items);
+        setDStatus(`Cargado (${currentListMeta.method}): ${items.length} elementos.`, 'ok');
+        setTimeout(closeDrawer, 900);
+        showLoadingBar(100);
+      } catch (err) {
+        setDStatus('Error: ' + err.message, 'err');
+        showLoadingBar(0);
+      }
+    });
+
+    $('#saveListBtn').addEventListener('click', async () => {
+      if (!channels.length) { toast('Primero carga una lista M3U.', 'error'); return; }
+      try {
+        const name = ($('#listNameInput').value.trim() || currentListMeta.name || 'Mi lista IPTV').slice(0, 80);
+        const id = currentListMeta.id || ('list_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+        const item = {
+          id, name,
+          url: currentListMeta.url || '',
+          method: currentListMeta.method || '',
+          updatedAt: Date.now(),
+          channels: channels.map(c => ({
+            name: c.name, group: c.group, logo: c.logo, id: c.id, url: c.url, tvgType: c.tvgType, _type: c._type
+          }))
+        };
+        await StorageService.saveList(item);
+        currentListMeta = { id, name, url: item.url, method: item.method, updatedAt: item.updatedAt };
+        localStorage.setItem('ds_last_saved_list', id);
+        $('#listNameInput').value = name;
+        await refreshSavedLists();
+        toast(`✓ "${name}" guardada (${item.channels.length} elementos)`, 'success');
+        setDStatus(`✓ Guardada: ${name} · ${item.channels.length} elementos`, 'ok');
+      } catch (err) { toast('No se pudo guardar: ' + err.message, 'error'); }
+    });
+
+    $('#openSavedBtn').addEventListener('click', async () => {
+      const id = $('#savedListsSelect').value;
+      if (!id) { toast('Selecciona una lista guardada.', 'error'); return; }
+      try {
+        const item = await StorageService.getList(id);
+        if (!item || !Array.isArray(item.channels) || !item.channels.length) {
+          toast('La lista está vacía o dañada.', 'error');
+          return;
+        }
+        const withTypes = item.channels.map(c => {
+          if (!c._type) c._type = M3UParser.classify(c);
+          return c;
+        });
+        currentListMeta = { id: item.id, name: item.name, url: item.url, method: item.method, updatedAt: item.updatedAt };
+        localStorage.setItem('ds_last_saved_list', item.id);
+        $('#listNameInput').value = currentListMeta.name;
+        setChannels(withTypes);
+        setDStatus(`Lista guardada abierta: ${withTypes.length} elementos.`, 'ok');
+        setTimeout(closeDrawer, 700);
+      } catch (err) { setDStatus('Error al abrir: ' + err.message, 'err'); }
+    });
+
+    $('#updateSavedBtn').addEventListener('click', async () => {
+      const id = $('#savedListsSelect').value || currentListMeta.id;
+      if (!id) { toast('Selecciona una lista guardada.', 'error'); return; }
+      try {
+        const saved = await StorageService.getList(id);
+        if (!saved) { toast('No se encontró la lista.', 'error'); return; }
+        const sourceUrl = saved.url || currentListMeta.url;
+        if (!sourceUrl) { toast('Esta lista no tiene URL para actualizar.', 'error'); return; }
+        setDStatus('🔄 Actualizando...', '');
+        const resp = await fetch(sourceUrl, { signal: AbortSignal.timeout(15000) });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const text = await resp.text();
+        const fresh = M3UParser.parse(text);
+        if (!fresh.length) throw new Error('No se encontraron entradas M3U válidas.');
+        const updated = {
+          id: saved.id,
+          name: saved.name || 'Mi lista IPTV',
+          url: sourceUrl,
+          method: saved.method || 'actualizada',
+          updatedAt: Date.now(),
+          channels: fresh.map(c => ({ name: c.name, group: c.group, logo: c.logo, id: c.id, url: c.url, tvgType: c.tvgType, _type: c._type }))
+        };
+        await StorageService.saveList(updated);
+        currentListMeta = { id: updated.id, name: updated.name, url: updated.url, method: updated.method, updatedAt: updated.updatedAt };
+        localStorage.setItem('ds_last_saved_list', updated.id);
+        $('#listNameInput').value = updated.name;
+        setChannels(fresh);
+        await refreshSavedLists();
+        setDStatus(`✓ Actualizada: ${fresh.length} elementos.`, 'ok');
+        toast(`✓ "${updated.name}" actualizada`, 'success');
+      } catch (err) { setDStatus('❌ Error: ' + err.message, 'err'); }
+    });
+
+    $('#deleteSavedBtn').addEventListener('click', async () => {
+      const id = $('#savedListsSelect').value;
+      if (!id) { toast('Selecciona una lista para eliminar.', 'error'); return; }
+      try {
+        const item = await StorageService.getList(id);
+        if (!item) return;
+        if (!confirm(`¿Eliminar "${item.name || 'esta lista'}" del dispositivo?`)) return;
+        await StorageService.deleteList(id);
+        if (currentListMeta.id === id) {
+          currentListMeta = { id: null, name: '', url: '', method: '', updatedAt: 0 };
+          localStorage.removeItem('ds_last_saved_list');
+        }
+        await refreshSavedLists();
+        toast('✓ Lista eliminada.', 'info');
+      } catch (err) { toast('No se pudo eliminar: ' + err.message, 'error'); }
+    });
+
+    $('#demoBtn').addEventListener('click', () => {
+      const demo = `#EXTM3U
+#EXTINF:-1 group-title="Acción" tvg-type="movie",Película de Acción
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 group-title="Comedia" tvg-type="movie",Película de Comedia
+https://test-streams.mux.dev/test_001/stream.m3u8
+#EXTINF:-1 group-title="Drama" tvg-type="series",Serie Dramática 1
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 group-title="Anime" tvg-type="series",Anime Serie
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 group-title="Noticias" tvg-type="live",Canal Noticias 24/7
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 group-title="Deportes" tvg-type="live",Canal Deportes en Vivo
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 group-title="Música" tvg-type="live",Radio Música
+https://test-streams.mux.dev/test_001/stream.m3u8`;
+      const items = M3UParser.parse(demo);
+      setChannels(items);
+      setDStatus('Demo cargado con clasificación automática.', 'ok');
+      setTimeout(closeDrawer, 800);
+    });
+
+    $('#urlMode').addEventListener('change', () => {
+      const v = $('#urlMode').value;
+      $('#proxyField').style.display = (v === 'proxy') ? 'block' : 'none';
+    });
+
+    // Cerrar con Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeDetail();
+        closeSearch();
+        closeDrawer();
+        closeProfiles();
+        stopPlayer();
+      }
+    });
+
+    // Scroll nav
+    window.addEventListener('scroll', () => {
+      $('#topNav').classList.toggle('solid', window.scrollY > 20);
+    });
+
+    // Navegación
+    $$('.nav-links a').forEach(a => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        $$('.nav-links a').forEach(x => x.classList.remove('active'));
+        a.classList.add('active');
+        handleNavAction(a.dataset.nav);
+      });
+    });
+
+    $$('.sb-link[data-nav]').forEach(a => {
+      a.addEventListener('click', () => {
+        handleNavAction(a.dataset.nav);
+        closeSidebar();
+      });
+    });
+
+    $$('.bn-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        const sec = b.dataset.bnav;
+        if (sec === 'search') { openSearch(); return; }
+        if (sec === 'perfil') { openProfiles(); return; }
+        $$('.bn-btn').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        handleNavAction(sec);
+      });
+    });
+
+    // Perfiles
+    $('#profileTrigger').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dropdown = document.querySelector('.profile-dropdown');
+      const expanded = dropdown.style.opacity === '1';
+      dropdown.style.opacity = expanded ? '0' : '1';
+      dropdown.style.pointerEvents = expanded ? 'none' : 'all';
+      $('#profileTrigger').setAttribute('aria-expanded', !expanded);
+    });
+
+    // Inicializar listas guardadas
+    await refreshSavedLists();
+
+    // Cerrar dropdown al hacer clic fuera
+    document.addEventListener('click', () => {
+      const dropdown = document.querySelector('.profile-dropdown');
+      dropdown.style.opacity = '0';
+      dropdown.style.pointerEvents = 'none';
+      $('#profileTrigger').setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // ── Navegación ──
+  function handleNavAction(section) {
+    const rows = $$('.cat-row');
+    if (section === 'milista') {
+      const r = [...rows].find(r => r.dataset.rowKey === '⭐ Mi lista' || r.dataset.rowKey === 'milista');
+      r ? r.scrollIntoView({ behavior: 'smooth', block: 'start' }) : toast('Mi lista está vacía', 'info');
+    } else if (section === 'nuevos' || section === 'inicio') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (section === 'envivo') {
+      const r = [...rows].find(r => r.dataset.section === 'envivo' || /vivo|live|directo/i.test(r.dataset.rowKey));
+      r ? r.scrollIntoView({ behavior: 'smooth', block: 'start' }) : toast('No hay canales en vivo', 'info');
+    } else if (section === 'series') {
+      const r = [...rows].find(r => r.dataset.section === 'series' || /serie|series|drama/i.test(r.dataset.rowKey));
+      r ? r.scrollIntoView({ behavior: 'smooth', block: 'start' }) : toast('No hay series', 'info');
+    } else if (section === 'peliculas') {
+      const r = [...rows].find(r => r.dataset.section === 'peliculas' || /pelic|movie|cinema/i.test(r.dataset.rowKey));
+      r ? r.scrollIntoView({ behavior: 'smooth', block: 'start' }) : toast('No hay películas', 'info');
+    }
+  }
+
+  // ── Sidebar close ──
+  function closeSidebar() {
+    $('#sidebar').classList.remove('open');
+    $('#sideBackdrop').classList.remove('open');
+  }
+
+  // ── Profiles ──
+  function openProfiles() {
+    $('#profilesScreen').classList.add('open');
+    lastFocusedElement = document.activeElement;
+  }
+
+  function closeProfiles() {
+    $('#profilesScreen').classList.remove('open');
+    if (lastFocusedElement) lastFocusedElement.focus();
+  }
+
+  function switchProfile(name, emoji, bg) {
+    activeProfile = { name, emoji, bg };
+    localStorage.setItem('ds_profile', JSON.stringify(activeProfile));
+    $('#activePic').style.background = bg;
+    $('#activePic').textContent = emoji;
+    closeProfiles();
+    toast(`Perfil: ${name}`, 'success');
+  }
+
+  // ── Refresh saved lists ──
+  async function refreshSavedLists() {
+    const sel = $('#savedListsSelect');
+    if (!sel) return;
+    try {
+      const lists = await StorageService.getAllLists();
+      sel.innerHTML = '<option value="">— Selecciona una lista guardada —</option>';
+      for (const item of lists) {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        const count = Array.isArray(item.channels) ? item.channels.length : 0;
+        opt.textContent = `${item.name || 'Lista sin nombre'} (${count})`;
+        sel.appendChild(opt);
+      }
+      if (currentListMeta.id) sel.value = currentListMeta.id;
+      const status = $('#savedStatus');
+      if (status) status.textContent = lists.length ? `💾 ${lists.length} lista(s) guardada(s)` : 'No hay listas guardadas.';
+    } catch (e) { /* ignore */ }
+  }
+
+  function setDStatus(msg, type = '') {
+    const el = $('#dStatus');
+    el.textContent = msg;
+    el.className = 'dstatus' + (type ? ' ' + type : '');
+  }
+
+  // Exponer
+  return {
+    init,
+    openDrawer,
+    closeDrawer,
+    openProfiles,
+    closeProfiles,
+    switchProfile,
+    jumpToRow,
+    playChannel,
+    stopPlayer,
+    openDetail,
+    closeDetail,
+    toggleFavorite,
+    toast,
+    setDStatus
+  };
+})();
+
+// ═══════════════════════════════════════════════════
+//  INICIO
+// ═══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => App.init());
+
+// Exponer App global
+window.App = App;
 </script>
 </body>
 </html>
