@@ -528,6 +528,7 @@ ul { list-style: none; }
     <div class="player-options" id="playerOptionsMenu" role="menu" aria-label="Opciones del reproductor">
       <button class="player-option" id="optFullscreen" type="button">⛶&nbsp; Pantalla completa</button>
       <button class="player-option" id="optMute" type="button">🔊&nbsp; Silenciar</button>
+      <button class="player-option" id="optPip" type="button">🪟&nbsp; Ventana flotante</button>
       <button class="player-option" id="optReload" type="button">↻&nbsp; Recargar reproducción</button>
       <button class="player-option danger" id="optClose" type="button">✕&nbsp; Cerrar reproductor</button>
     </div>
@@ -1441,21 +1442,36 @@ const App = (() => {
     );
   }
 
+  async function lockLandscape() {
+    try {
+      if (screen.orientation?.lock) await screen.orientation.lock('landscape');
+    } catch {}
+  }
+
+  async function unlockOrientation() {
+    try {
+      if (screen.orientation?.unlock) screen.orientation.unlock();
+    } catch {}
+  }
+
   async function togglePlayerFullscreen() {
     const shell = $('#playerFs');
     const vid = $('#mainVid');
     try {
       if (document.fullscreenElement) {
         if (document.exitFullscreen) await document.exitFullscreen();
+        await unlockOrientation();
         return;
       }
       if (shell.requestFullscreen) {
         await shell.requestFullscreen();
+        await lockLandscape();
         closePlayerOptions();
         return;
       }
       if (vid.requestFullscreen) {
         await vid.requestFullscreen();
+        await lockLandscape();
         closePlayerOptions();
         return;
       }
@@ -1474,6 +1490,33 @@ const App = (() => {
         }
       } catch {}
       toast('No se pudo activar pantalla completa.', 'warning');
+    }
+  }
+
+  async function enterPiP() {
+    localStorage.setItem('ds_pip_on_hide', '1');
+    const vid = $('#mainVid');
+    if (!vid) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        closePlayerOptions();
+        return;
+      }
+      if (document.pictureInPictureEnabled && vid.requestPictureInPicture) {
+        await vid.requestPictureInPicture();
+        closePlayerOptions();
+        showPlayerUI(false);
+        return;
+      }
+      if (vid.webkitSetPresentationMode) {
+        vid.webkitSetPresentationMode('picture-in-picture');
+        closePlayerOptions();
+        return;
+      }
+      toast('La ventana flotante no está disponible en este navegador/WebView.', 'warning');
+    } catch (e) {
+      toast('No se pudo activar la ventana flotante. Chrome/Android puede exigir que se pulse el botón directamente.', 'warning');
     }
   }
 
@@ -1509,6 +1552,10 @@ const App = (() => {
     const vid = $('#mainVid');
     if (document.fullscreenElement && document.exitFullscreen) {
       document.exitFullscreen().catch(() => {});
+    }
+    unlockOrientation();
+    if (document.pictureInPictureElement && document.exitPictureInPicture) {
+      document.exitPictureInPicture().catch(() => {});
     }
     PlayerService.stop(vid);
     $('#playerFs').classList.remove('open');
@@ -1710,10 +1757,12 @@ const App = (() => {
     $('#playerFs').addEventListener('touchstart', () => showPlayerUI(true), { passive:true });
     $('#optFullscreen').addEventListener('click', () => togglePlayerFullscreen());
     $('#optMute').addEventListener('click', () => { const v=$('#mainVid'); v.muted=!v.muted; $('#optMute').innerHTML = v.muted ? '🔇&nbsp; Activar sonido' : '🔊&nbsp; Silenciar'; closePlayerOptions(); });
+    $('#optPip').addEventListener('click', enterPiP);
     $('#optReload').addEventListener('click', reloadCurrentPlayer);
     $('#optClose').addEventListener('click', stopPlayer);
     document.addEventListener('fullscreenchange', () => {
       const fs = !!document.fullscreenElement;
+      if (!fs) unlockOrientation();
       $('#playerFullscreenBtn').textContent = fs ? '↙' : '⛶';
       $('#playerFullscreenBtn').title = fs ? 'Salir de pantalla completa' : 'Pantalla completa';
       $('#optFullscreen').innerHTML = fs ? '↙&nbsp; Salir de pantalla completa' : '⛶&nbsp; Pantalla completa';
@@ -1977,6 +2026,19 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
 
     window.addEventListener('scroll', () => {
       $('#topNav').classList.toggle('solid', window.scrollY > 20);
+    });
+
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState !== 'hidden') return;
+      const vid = $('#mainVid');
+      if (!$('#playerFs').classList.contains('open') || !vid || vid.paused) return;
+      // Intento compatible; algunos navegadores/WebView rechazan PiP sin gesto del usuario.
+      if (localStorage.getItem('ds_pip_on_hide') !== '1') return;
+      try {
+        if (document.pictureInPictureEnabled && !document.pictureInPictureElement && vid.requestPictureInPicture) {
+          await vid.requestPictureInPicture();
+        }
+      } catch {}
     });
 
     $$('.nav-links a').forEach(a => {
