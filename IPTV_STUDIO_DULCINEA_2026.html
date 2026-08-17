@@ -287,6 +287,44 @@ ul { list-style: none; }
 .prof-av { width: 96px; height: 96px; border-radius: var(--radius-md); border: 3px solid transparent; transition: all var(--transition-fast); display: flex; align-items: center; justify-content: center; font-size: 40px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 .prof-name { font-size: 14px; font-weight: 600; color: var(--text-tertiary); transition: color var(--transition-fast); }
 
+/* ===== PERFIL · LISTAS GUARDADAS ===== */
+.profile-saved-lists {
+  width: min(920px, 92vw);
+  margin-top: 12px;
+  padding: 20px;
+  background: var(--bg-glass-strong);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+.profile-saved-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.profile-saved-title { font-size:15px; font-weight:800; }
+.profile-saved-status { font-size:12px; color:var(--text-tertiary); }
+.profile-saved-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; max-height:180px; overflow:auto; }
+.profile-list-btn { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:12px 14px; background:var(--bg-tertiary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); color:var(--text-primary); transition:all var(--transition-fast); }
+.profile-list-btn:hover { background:var(--bg-elevated); border-color:var(--border-medium); transform:translateY(-1px); }
+.profile-list-btn .pli { font-size:20px; flex-shrink:0; }
+.profile-list-btn .pln { min-width:0; flex:1; }
+.profile-list-btn .plname { display:block; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.profile-list-btn .plmeta { display:block; font-size:10px; color:var(--text-tertiary); margin-top:2px; }
+.profile-empty { grid-column:1/-1; padding:18px; text-align:center; color:var(--text-tertiary); font-size:13px; }
+
+/* ===== PLAYER · ACCIONES ===== */
+.player-actions { margin-left:auto; display:flex; align-items:center; gap:8px; }
+.player-action-btn { width:42px; height:42px; border-radius:50%; background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.15); color:#fff; display:flex; align-items:center; justify-content:center; font-size:17px; cursor:pointer; transition:all var(--transition-fast); backdrop-filter:blur(8px); }
+.player-action-btn:hover { background:rgba(255,255,255,.15); border-color:rgba(255,255,255,.35); transform:scale(1.05); }
+.player-options { position:absolute; top:70px; right:22px; width:230px; background:rgba(18,18,26,.96); border:1px solid var(--border-medium); border-radius:var(--radius-md); box-shadow:var(--shadow-lg); padding:8px; display:none; z-index:30; backdrop-filter:blur(18px); }
+.player-options.open { display:block; animation:scaleIn .18s ease both; }
+.player-option { display:flex; align-items:center; gap:10px; width:100%; padding:11px 12px; border-radius:8px; color:var(--text-secondary); text-align:left; font-size:13px; font-weight:600; cursor:pointer; }
+.player-option:hover { background:rgba(255,255,255,.07); color:#fff; }
+.player-option.danger { color:#f87171; }
+@media (max-width:560px) {
+  .profile-saved-lists { padding:14px; margin-top:0; }
+  .profile-saved-grid { grid-template-columns:1fr; max-height:150px; }
+  .player-options { right:12px; top:64px; width:210px; }
+}
+
+
 .bot-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-glass-strong); backdrop-filter: blur(20px) saturate(1.4); border-top: 1px solid var(--border-subtle); z-index: 80; padding-bottom: env(safe-area-inset-bottom, 0); }
 .bot-nav-inner { display: flex; padding: 0 8px; }
 .bn-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 4px 12px; font-size: 10px; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: all var(--transition-fast); border-radius: var(--radius-sm); margin: 4px; }
@@ -499,7 +537,17 @@ ul { list-style: none; }
       <div class="player-ch-grp" id="playerGrp">Categoría</div>
       <div class="player-status" id="playerStatus">Listo</div>
     </div>
-    <button class="btn-circle" id="playerListBtn" style="font-size:14px" title="Mi lista">＋</button>
+    <div class="player-actions">
+      <button class="btn-circle" id="playerListBtn" style="font-size:14px" title="Mi lista">＋</button>
+      <button class="player-action-btn" id="playerFullscreenBtn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button>
+      <button class="player-action-btn" id="playerOptionsBtn" type="button" title="Opciones" aria-label="Opciones">⋮</button>
+    </div>
+    <div class="player-options" id="playerOptionsMenu" role="menu" aria-label="Opciones del reproductor">
+      <button class="player-option" id="optFullscreen" type="button">⛶&nbsp; Pantalla completa</button>
+      <button class="player-option" id="optMute" type="button">🔊&nbsp; Silenciar</button>
+      <button class="player-option" id="optReload" type="button">↻&nbsp; Recargar reproducción</button>
+      <button class="player-option danger" id="optClose" type="button">✕&nbsp; Cerrar reproductor</button>
+    </div>
   </div>
   <video id="mainVid" controls playsinline preload="metadata"></video>
   <div class="player-controls" id="playerControls"></div>
@@ -529,6 +577,16 @@ ul { list-style: none; }
       <div class="prof-av" style="background:rgba(255,255,255,.07);border:2px dashed rgba(255,255,255,.3)">＋</div>
       <div class="prof-name">Añadir perfil</div>
     </div>
+  </div>
+  <div class="profile-saved-lists" id="profileSavedListsPanel">
+    <div class="profile-saved-head">
+      <div>
+        <div class="profile-saved-title">📂 Listas guardadas</div>
+        <div class="profile-saved-status" id="profileSavedStatus">Cargando listas…</div>
+      </div>
+      <button class="btn btn-ghost" id="profileRefreshLists" type="button">↻ Actualizar</button>
+    </div>
+    <div class="profile-saved-grid" id="profileSavedListsGrid"></div>
   </div>
   <button class="btn btn-secondary" onclick="App.closeProfiles()">Cancelar</button>
 </div>
@@ -580,7 +638,7 @@ ul { list-style: none; }
     <input type="url" id="proxyInput" placeholder="https://tu-proxy.example/?url=">
   </div>
   <div class="drawer-acts">
-    <button class="btn btn-ghost" id="demoBtn">🎬 Demo</button>
+  <button class="btn btn-ghost" id="demoBtn">🎬 Demo</button>
     <button class="btn btn-secondary" id="saveListBtn" type="button">💾 Guardar</button>
     <button class="btn btn-primary" id="loadBtn">Cargar lista</button>
   </div>
@@ -1381,8 +1439,73 @@ const App = (() => {
     );
   }
 
-  function stopPlayer() {
+  async function togglePlayerFullscreen() {
+    const shell = $('#playerFs');
     const vid = $('#mainVid');
+    try {
+      if (document.fullscreenElement) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        return;
+      }
+      if (shell.requestFullscreen) {
+        await shell.requestFullscreen();
+        closePlayerOptions();
+        return;
+      }
+      if (vid.requestFullscreen) {
+        await vid.requestFullscreen();
+        closePlayerOptions();
+        return;
+      }
+      if (vid.webkitEnterFullscreen) {
+        vid.webkitEnterFullscreen();
+        closePlayerOptions();
+        return;
+      }
+      toast('El modo pantalla completa no está disponible en este dispositivo.', 'warning');
+    } catch (e) {
+      try {
+        if (vid.webkitEnterFullscreen) {
+          vid.webkitEnterFullscreen();
+          closePlayerOptions();
+          return;
+        }
+      } catch {}
+      toast('No se pudo activar pantalla completa.', 'warning');
+    }
+  }
+
+  function togglePlayerOptions() {
+    $('#playerOptionsMenu').classList.toggle('open');
+  }
+
+  function closePlayerOptions() {
+    $('#playerOptionsMenu').classList.remove('open');
+  }
+
+  function reloadCurrentPlayer() {
+    if (!curChannel) return;
+    closePlayerOptions();
+    const c = curChannel;
+    const vid = $('#mainVid');
+    PlayerService.stop(vid);
+    PlayerService.play(c, vid, (msg,type) => {
+      const el = $('#playerStatus');
+      el.textContent = msg;
+      el.className = 'player-status' + (type ? ' ' + type : '');
+    }, err => {
+      $('#playerStatus').textContent = 'Error: ' + err;
+      $('#playerStatus').className = 'player-status err';
+      toast('Error de reproducción: ' + err, 'error');
+    });
+  }
+
+  function stopPlayer() {
+    closePlayerOptions();
+    const vid = $('#mainVid');
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
     PlayerService.stop(vid);
     $('#playerFs').classList.remove('open');
     document.body.style.overflow = '';
@@ -1549,6 +1672,19 @@ const App = (() => {
     $('#modalX').addEventListener('click', closeDetail);
     $('#modalBg').addEventListener('click', (e) => { if (e.target === $('#modalBg')) closeDetail(); });
     $('#playerBack').addEventListener('click', stopPlayer);
+    $('#playerFullscreenBtn').addEventListener('click', togglePlayerFullscreen);
+    $('#playerOptionsBtn').addEventListener('click', (e) => { e.stopPropagation(); togglePlayerOptions(); });
+    $('#optFullscreen').addEventListener('click', () => togglePlayerFullscreen());
+    $('#optMute').addEventListener('click', () => { const v=$('#mainVid'); v.muted=!v.muted; $('#optMute').innerHTML = v.muted ? '🔇&nbsp; Activar sonido' : '🔊&nbsp; Silenciar'; closePlayerOptions(); });
+    $('#optReload').addEventListener('click', reloadCurrentPlayer);
+    $('#optClose').addEventListener('click', stopPlayer);
+    document.addEventListener('fullscreenchange', () => {
+      const fs = !!document.fullscreenElement;
+      $('#playerFullscreenBtn').textContent = fs ? '↙' : '⛶';
+      $('#playerFullscreenBtn').title = fs ? 'Salir de pantalla completa' : 'Pantalla completa';
+      $('#optFullscreen').innerHTML = fs ? '↙&nbsp; Salir de pantalla completa' : '⛶&nbsp; Pantalla completa';
+    });
+    $('#profileRefreshLists').addEventListener('click', refreshProfileSavedLists);
     $('#hamburgerBtn').addEventListener('click', () => {
       $('#sidebar').classList.toggle('open');
       $('#sideBackdrop').classList.toggle('open');
@@ -1864,9 +2000,53 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     $('#sideBackdrop').classList.remove('open');
   }
 
+  async function refreshProfileSavedLists() {
+    const grid = $('#profileSavedListsGrid');
+    const status = $('#profileSavedStatus');
+    if (!grid) return;
+    grid.innerHTML = '';
+    try {
+      const lists = await StorageService.getAllLists();
+      lists.sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      if (!lists.length) {
+        grid.innerHTML = '<div class="profile-empty">📂 Aún no tienes listas guardadas en este dispositivo.<br>Guarda una lista M3U desde “Cargar M3U” y aparecerá aquí.</div>';
+        if (status) status.textContent = '0 listas guardadas';
+        return;
+      }
+      if (status) status.textContent = `${lists.length} lista(s) disponible(s)`;
+      for (const item of lists) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'profile-list-btn';
+        const count = Array.isArray(item.channels) ? item.channels.length : 0;
+        b.innerHTML = `<span class="pli">📺</span><span class="pln"><span class="plname">${esc(item.name || 'Lista sin nombre')}</span><span class="plmeta">${count} elementos · Toca para abrir</span></span>`;
+        b.addEventListener('click', async () => {
+          try {
+            const loaded = await StorageService.getList(item.id);
+            if (!loaded || !Array.isArray(loaded.channels) || !loaded.channels.length) {
+              toast('La lista está vacía o dañada.', 'error');
+              return;
+            }
+            const fresh = loaded.channels.map(c => ({...c, _type: M3UParser.classify(c)}));
+            currentListMeta = { id: loaded.id, name: loaded.name, url: loaded.url, method: loaded.method, proxy: loaded.proxy || '', updatedAt: loaded.updatedAt };
+            localStorage.setItem('ds_last_saved_list', loaded.id);
+            setChannels(fresh);
+            closeProfiles();
+            toast(`✓ Lista abierta: ${loaded.name}`, 'success');
+          } catch (e) { toast('No se pudo abrir la lista: ' + e.message, 'error'); }
+        });
+        grid.appendChild(b);
+      }
+    } catch (e) {
+      if (status) status.textContent = 'No se pudieron leer las listas';
+      grid.innerHTML = '<div class="profile-empty">⚠️ No se pudieron cargar las listas guardadas.</div>';
+    }
+  }
+
   function openProfiles() {
     $('#profilesScreen').classList.add('open');
     lastFocusedElement = document.activeElement;
+    refreshProfileSavedLists();
   }
 
   function closeProfiles() {
