@@ -1423,7 +1423,7 @@ const App = (() => {
     lastFocusedElement = document.activeElement;
     if (!playerHistoryActive) {
       playerHistoryActive = true;
-      history.pushState({ dulcinea: 'player' }, '', window.location.href);
+      window.history.pushState({ dulcinea: 'player' }, '', window.location.href);
     }
     $('#playerBack').focus();
 
@@ -1519,7 +1519,7 @@ const App = (() => {
 
   function stopPlayer() {
     if (playerHistoryActive) {
-      history.back();
+      window.history.back();
       return;
     }
     stopPlayerInternal();
@@ -1658,7 +1658,7 @@ const App = (() => {
 
     // Estado base de navegación: el primer 'Atrás' desde el reproductor vuelve a la app.
     if (!history.state || history.state.dulcinea !== 'base') {
-      history.replaceState({ dulcinea: 'base' }, '', window.location.href);
+      window.history.replaceState({ dulcinea: 'base' }, '', window.location.href);
     }
 
     try {
@@ -2074,7 +2074,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     lastFocusedElement = document.activeElement;
     if (!profileHistoryActive) {
       profileHistoryActive = true;
-      history.pushState({ dulcinea: 'profiles' }, '', window.location.href);
+      window.history.pushState({ dulcinea: 'profiles' }, '', window.location.href);
     }
     refreshProfileSavedLists();
   }
@@ -2088,7 +2088,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
   function closeProfiles() {
     if (!$('#profilesScreen').classList.contains('open')) return;
     if (profileHistoryActive) {
-      history.back();
+      window.history.back();
       return;
     }
     closeProfilesInternal();
