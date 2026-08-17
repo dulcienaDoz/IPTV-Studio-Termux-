@@ -1552,19 +1552,36 @@ const App = (() => {
   }
 
   // ── Drawer ──
+  let drawerHistoryActive = false;
+
   function openDrawer() {
+    if ($('#drawer').classList.contains('open')) return;
     $('#drawerBg').classList.add('open');
     $('#drawer').classList.add('open');
     document.body.style.overflow = 'hidden';
     lastFocusedElement = document.activeElement;
-    $('#urlInput').focus();
+    if (!drawerHistoryActive) {
+      drawerHistoryActive = true;
+      window.history.pushState({ dulcinea: 'drawer' }, '', window.location.href);
+    }
+    setTimeout(() => $('#urlInput')?.focus(), 0);
   }
 
-  function closeDrawer() {
+  function closeDrawerInternal() {
     $('#drawerBg').classList.remove('open');
     $('#drawer').classList.remove('open');
     document.body.style.overflow = '';
+    drawerHistoryActive = false;
     if (lastFocusedElement) lastFocusedElement.focus();
+  }
+
+  function closeDrawer() {
+    if (!$('#drawer').classList.contains('open')) return;
+    if (drawerHistoryActive) {
+      window.history.back();
+      return;
+    }
+    closeDrawerInternal();
   }
 
   // ── Búsqueda ──
@@ -1657,7 +1674,7 @@ const App = (() => {
     $('#activePic').textContent = '📂';
 
     // Estado base de navegación: el primer 'Atrás' desde el reproductor vuelve a la app.
-    if (!history.state || history.state.dulcinea !== 'base') {
+    if (!window.history.state || window.history.state.dulcinea !== 'base') {
       window.history.replaceState({ dulcinea: 'base' }, '', window.location.href);
     }
 
@@ -1711,7 +1728,7 @@ const App = (() => {
         return;
       }
       // Evita que vistas internas abiertas provoquen la salida de la app.
-      if ($('#drawer').classList.contains('open')) { closeDrawer(); return; }
+      if (drawerHistoryActive && $('#drawer').classList.contains('open')) { closeDrawerInternal(); return; }
       if ($('#searchOverlay').classList.contains('open')) { closeSearch(); return; }
       if ($('#modalBg').classList.contains('open')) { closeDetail(); return; }
       if ($('#sidebar').classList.contains('open')) { closeSidebar(); return; }
@@ -1722,6 +1739,7 @@ const App = (() => {
       $('#sideBackdrop').classList.toggle('open');
     });
     $('#sideBackdrop').addEventListener('click', closeSidebar);
+    $('#drawerBg').addEventListener('click', closeDrawer);
     $('#openM3uBtn').addEventListener('click', openDrawer);
 
     // Drawer file
