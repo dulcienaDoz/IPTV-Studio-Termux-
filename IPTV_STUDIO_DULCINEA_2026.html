@@ -278,6 +278,12 @@ ul { list-style: none; }
 
 .profiles-screen { position: fixed; inset: 0; background: var(--bg-primary); z-index: 250; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
 .profiles-screen.open { opacity: 1; pointer-events: all; }
+.profile-saved-only { width:min(920px,92vw); max-height:88vh; overflow:auto; padding:28px; background:var(--bg-secondary); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); }
+.profile-saved-top { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.profile-saved-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+.profile-saved-grid-large { max-height:55vh; overflow:auto; }
+.player-top-bar.player-idle, .player-controls.player-idle { opacity:0 !important; pointer-events:none !important; }
+.player-fs.player-ui-visible .player-top-bar.player-idle, .player-fs.player-ui-visible .player-controls.player-idle { opacity:1 !important; pointer-events:auto !important; }
 .prof-title { font-size: clamp(26px, 4vw, 40px); font-weight: 400; margin-bottom: 48px; color: var(--text-primary); letter-spacing: -0.5px; }
 .prof-grid { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; margin-bottom: 48px; }
 .prof-card { display: flex; flex-direction: column; align-items: center; gap: 14px; cursor: pointer; transition: transform var(--transition-fast); }
@@ -419,34 +425,11 @@ ul { list-style: none; }
   <div class="nav-right">
     <button class="nav-icon-btn" id="searchToggle" aria-label="Buscar" title="Buscar" data-tooltip="Buscar">🔍</button>
     <button class="nav-icon-btn" id="openM3uBtn" aria-label="Cargar lista M3U" title="Cargar M3U" data-tooltip="Cargar M3U">📂</button>
-    <div class="profile-wrap" role="menu">
-      <div class="profile-trigger" id="profileTrigger" aria-haspopup="true" aria-expanded="false">
+    <div class="profile-wrap">
+      <div class="profile-trigger" id="profileTrigger" role="button" aria-label="Listas guardadas">
         <div class="profile-pic" id="activePic" aria-label="Perfil activo">🎭</div>
-        <span class="profile-caret">▾</span>
       </div>
-      <div class="profile-dropdown" role="menu" aria-label="Menú de perfil">
-        <div class="pd-profiles">
-          <div class="pd-profile-item" role="menuitem" onclick="App.switchProfile('Usuario 1','🎭','linear-gradient(135deg,#E50914,#8b0000)')">
-            <div class="pp" style="background:linear-gradient(135deg,#E50914,#8b0000)">🎭</div><span>Usuario 1</span>
-          </div>
-          <div class="pd-profile-item" role="menuitem" onclick="App.switchProfile('Usuario 2','🎮','linear-gradient(135deg,#2196f3,#0d47a1)')">
-            <div class="pp" style="background:linear-gradient(135deg,#2196f3,#0d47a1)">🎮</div><span>Usuario 2</span>
-          </div>
-          <div class="pd-profile-item" role="menuitem" onclick="App.switchProfile('Niños','🧸','linear-gradient(135deg,#ffc107,#e65100)')">
-            <div class="pp" style="background:linear-gradient(135deg,#ffc107,#e65100)">🧸</div><span>Niños</span>
-          </div>
-          <div class="pd-profile-item" role="menuitem" onclick="App.openProfiles()">
-            <div class="pp" style="background:rgba(255,255,255,.08);border:1.5px dashed rgba(255,255,255,.3)">＋</div>
-            <span>Administrar perfiles</span>
-          </div>
-        </div>
-        <div class="pd-divider"></div>
-        <div class="pd-link" role="menuitem" onclick="App.openDrawer()">📂 Cargar lista M3U</div>
-        <div class="pd-link" role="menuitem" onclick="App.openProfiles()">⚙️ Configuración</div>
-        <div class="pd-link" role="menuitem">❓ Ayuda</div>
-        <div class="pd-divider"></div>
-        <div class="pd-link danger" role="menuitem">→ Cerrar sesión</div>
-      </div>
+
     </div>
   </div>
 </nav>
@@ -554,41 +537,21 @@ ul { list-style: none; }
 </div>
 
 <!-- ===== PROFILES ===== -->
-<div class="profiles-screen" id="profilesScreen" role="dialog" aria-modal="true" aria-label="Gestión de perfiles">
-  <div class="prof-title">¿Quién está viendo?</div>
-  <div class="prof-grid">
-    <div class="prof-card" onclick="App.switchProfile('Usuario 1','🎭','linear-gradient(135deg,#E50914,#8b0000)')">
-      <div class="prof-av" style="background:linear-gradient(135deg,#E50914,#8b0000)">🎭</div>
-      <div class="prof-name">Usuario 1</div>
-    </div>
-    <div class="prof-card" onclick="App.switchProfile('Usuario 2','🎮','linear-gradient(135deg,#2196f3,#0d47a1)')">
-      <div class="prof-av" style="background:linear-gradient(135deg,#2196f3,#0d47a1)">🎮</div>
-      <div class="prof-name">Usuario 2</div>
-    </div>
-    <div class="prof-card" onclick="App.switchProfile('Niños','🧸','linear-gradient(135deg,#ffc107,#e65100)')">
-      <div class="prof-av" style="background:linear-gradient(135deg,#ffc107,#e65100)">🧸</div>
-      <div class="prof-name">Niños</div>
-    </div>
-    <div class="prof-card" onclick="App.switchProfile('Invitado','👻','linear-gradient(135deg,#4caf50,#1b5e20)')">
-      <div class="prof-av" style="background:linear-gradient(135deg,#4caf50,#1b5e20)">👻</div>
-      <div class="prof-name">Invitado</div>
-    </div>
-    <div class="prof-card">
-      <div class="prof-av" style="background:rgba(255,255,255,.07);border:2px dashed rgba(255,255,255,.3)">＋</div>
-      <div class="prof-name">Añadir perfil</div>
-    </div>
-  </div>
-  <div class="profile-saved-lists" id="profileSavedListsPanel">
-    <div class="profile-saved-head">
+<div class="profiles-screen" id="profilesScreen" role="dialog" aria-modal="true" aria-label="Listas guardadas">
+  <div class="profile-saved-only">
+    <div class="profile-saved-top">
       <div>
-        <div class="profile-saved-title">📂 Listas guardadas</div>
+        <div class="prof-title">📂 Listas guardadas</div>
         <div class="profile-saved-status" id="profileSavedStatus">Cargando listas…</div>
       </div>
       <button class="btn btn-ghost" id="profileRefreshLists" type="button">↻ Actualizar</button>
     </div>
-    <div class="profile-saved-grid" id="profileSavedListsGrid"></div>
+    <div class="profile-saved-grid profile-saved-grid-large" id="profileSavedListsGrid"></div>
+    <div class="profile-saved-actions">
+      <button class="btn btn-secondary" onclick="App.closeProfiles()">Cerrar</button>
+      <button class="btn btn-primary" onclick="App.openDrawer()">📥 Cargar M3U</button>
+    </div>
   </div>
-  <button class="btn btn-secondary" onclick="App.closeProfiles()">Cancelar</button>
 </div>
 
 <!-- ===== DRAWER ===== -->
@@ -982,6 +945,7 @@ const App = (() => {
   let rowObserver = null;
   let allRowsData = [];
   let lastFocusedElement = null;
+  let playerHideTimer = null;
   let searchResults = [];
   let searchShown = 0;
   const SEARCH_PAGE_SIZE = 20;
@@ -1405,6 +1369,36 @@ const App = (() => {
     if (lastFocusedElement) lastFocusedElement.focus();
   }
 
+  // ── Controles del reproductor ──
+  function showPlayerUI(autoHide = true) {
+    const fs = $('#playerFs');
+    const top = $('#playerTopBar');
+    const controls = $('#playerControls');
+    if (!fs || !top || !controls) return;
+    fs.classList.add('player-ui-visible');
+    top.classList.remove('player-idle');
+    controls.classList.remove('player-idle');
+    clearTimeout(playerHideTimer);
+    if (autoHide) playerHideTimer = setTimeout(() => hidePlayerUI(), 2600);
+  }
+
+  function hidePlayerUI() {
+    const fs = $('#playerFs');
+    const top = $('#playerTopBar');
+    const controls = $('#playerControls');
+    if (!fs || !top || !controls) return;
+    if (document.querySelector('.player-options.open')) return;
+    top.classList.add('player-idle');
+    controls.classList.add('player-idle');
+    fs.classList.remove('player-ui-visible');
+  }
+
+  function togglePlayerUI() {
+    const fs = $('#playerFs');
+    if (fs.classList.contains('player-ui-visible')) hidePlayerUI();
+    else showPlayerUI(true);
+  }
+
   // ── Reproducción ──
   async function playChannel(c) {
     curChannel = c;
@@ -1422,6 +1416,7 @@ const App = (() => {
     lb.onclick = () => toggleFavorite(c, null);
 
     $('#playerFs').classList.add('open');
+    showPlayerUI(false);
     document.body.style.overflow = 'hidden';
     lastFocusedElement = document.activeElement;
     $('#playerBack').focus();
@@ -1430,6 +1425,7 @@ const App = (() => {
       (msg, type) => {
         statusEl.textContent = msg;
         statusEl.className = 'player-status' + (type ? ' ' + type : '');
+        if (/reprodu|playing|listo|conect/i.test(msg || '')) showPlayerUI(true);
       },
       (errMsg) => {
         statusEl.textContent = 'Error: ' + errMsg;
@@ -1477,6 +1473,7 @@ const App = (() => {
 
   function togglePlayerOptions() {
     $('#playerOptionsMenu').classList.toggle('open');
+    showPlayerUI(false);
   }
 
   function closePlayerOptions() {
@@ -1501,6 +1498,7 @@ const App = (() => {
   }
 
   function stopPlayer() {
+    clearTimeout(playerHideTimer);
     closePlayerOptions();
     const vid = $('#mainVid');
     if (document.fullscreenElement && document.exitFullscreen) {
@@ -1640,12 +1638,8 @@ const App = (() => {
     try { favorites = await StorageService.getFavorites(); } catch (e) { favorites = []; }
     try { history = await StorageService.getHistory(); } catch (e) { history = []; }
 
-    try {
-      const p = JSON.parse(localStorage.getItem('ds_profile'));
-      if (p) activeProfile = p;
-    } catch {}
-    $('#activePic').style.background = activeProfile.bg || 'linear-gradient(135deg,#E50914,#8b0000)';
-    $('#activePic').textContent = activeProfile.emoji || '🎭';
+    $('#activePic').style.background = 'linear-gradient(135deg,#E50914,#8b0000)';
+    $('#activePic').textContent = '📂';
 
     try {
       const lastId = localStorage.getItem('ds_last_saved_list');
@@ -1673,7 +1667,10 @@ const App = (() => {
     $('#modalBg').addEventListener('click', (e) => { if (e.target === $('#modalBg')) closeDetail(); });
     $('#playerBack').addEventListener('click', stopPlayer);
     $('#playerFullscreenBtn').addEventListener('click', togglePlayerFullscreen);
-    $('#playerOptionsBtn').addEventListener('click', (e) => { e.stopPropagation(); togglePlayerOptions(); });
+    $('#playerOptionsBtn').addEventListener('click', (e) => { e.stopPropagation(); togglePlayerOptions(); showPlayerUI(false); });
+    $('#playerFs').addEventListener('pointermove', () => showPlayerUI(true));
+    $('#mainVid').addEventListener('click', () => togglePlayerUI());
+    $('#playerFs').addEventListener('touchstart', () => showPlayerUI(true), { passive:true });
     $('#optFullscreen').addEventListener('click', () => togglePlayerFullscreen());
     $('#optMute').addEventListener('click', () => { const v=$('#mainVid'); v.muted=!v.muted; $('#optMute').innerHTML = v.muted ? '🔇&nbsp; Activar sonido' : '🔊&nbsp; Silenciar'; closePlayerOptions(); });
     $('#optReload').addEventListener('click', reloadCurrentPlayer);
@@ -1958,21 +1955,11 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
 
     $('#profileTrigger').addEventListener('click', (e) => {
       e.stopPropagation();
-      const dropdown = document.querySelector('.profile-dropdown');
-      const expanded = dropdown.style.opacity === '1';
-      dropdown.style.opacity = expanded ? '0' : '1';
-      dropdown.style.pointerEvents = expanded ? 'none' : 'all';
-      $('#profileTrigger').setAttribute('aria-expanded', !expanded);
+      openProfiles();
     });
 
     await refreshSavedLists();
 
-    document.addEventListener('click', () => {
-      const dropdown = document.querySelector('.profile-dropdown');
-      dropdown.style.opacity = '0';
-      dropdown.style.pointerEvents = 'none';
-      $('#profileTrigger').setAttribute('aria-expanded', 'false');
-    });
   }
 
   // ── Navegación ──
@@ -2054,14 +2041,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     if (lastFocusedElement) lastFocusedElement.focus();
   }
 
-  function switchProfile(name, emoji, bg) {
-    activeProfile = { name, emoji, bg };
-    localStorage.setItem('ds_profile', JSON.stringify(activeProfile));
-    $('#activePic').style.background = bg;
-    $('#activePic').textContent = emoji;
-    closeProfiles();
-    toast(`Perfil: ${name}`, 'success');
-  }
+  function switchProfile() { openProfiles(); }
 
   async function refreshSavedLists() {
     const sel = $('#savedListsSelect');
