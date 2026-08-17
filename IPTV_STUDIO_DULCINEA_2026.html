@@ -818,7 +818,7 @@ const PlayerService = (() => {
   let hls = null;
   let currentChannel = null;
   let retryCount = 0;
-  const MAX_RETRIES = 2;
+  const MAX_RETRIES = 6;
   let abortController = null;
 
   function destroyHls() {
@@ -874,10 +874,11 @@ const PlayerService = (() => {
           maxMaxBufferLength: 24,
           backBufferLength: 8,
           capLevelToPlayerSize: true,
-          manifestLoadingMaxRetry: 2,
-          levelLoadingMaxRetry: 2,
-          fragLoadingMaxRetry: 2,
-          fragLoadingRetryDelay: 800,
+          manifestLoadingMaxRetry: 5,
+          levelLoadingMaxRetry: 5,
+          fragLoadingMaxRetry: 5,
+          fragLoadingRetryDelay: 1000,
+          startFragPrefetch: true,
           abrEwmaDefaultEstimate: 1e6,
         });
 
@@ -892,7 +893,9 @@ const PlayerService = (() => {
               statusCallback('Error de red. Reintentando...', 'err');
               if (retryCount < MAX_RETRIES) {
                 retryCount++;
-                setTimeout(() => hls.startLoad(), 1000);
+                setTimeout(() => {
+                  if (hls) hls.startLoad(-1);
+                }, Math.min(8000, 1000 * retryCount));
               } else {
                 errorCallback('No se pudo conectar después de varios intentos.');
               }
@@ -929,7 +932,7 @@ const PlayerService = (() => {
 
   function getCurrentChannel() { return currentChannel; }
 
-  return { play, stop, getCurrentChannel, isHlsUrl };
+  return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -1402,6 +1405,20 @@ const App = (() => {
     else showPlayerUI(true);
   }
 
+  function setupMediaSession(channel, videoElement) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: channel?.name || 'Dulcinea IPTV',
+        artist: channel?.group || 'IPTV Studio Dulcinea',
+        album: 'Dulcinea IPTV'
+      });
+      navigator.mediaSession.setActionHandler('play', () => videoElement.play().catch(() => {}));
+      navigator.mediaSession.setActionHandler('pause', () => videoElement.pause());
+      try { navigator.mediaSession.setActionHandler('stop', () => videoElement.pause()); } catch {}
+    } catch {}
+  }
+
   // ── Reproducción ──
   async function playChannel(c) {
     curChannel = c;
@@ -1411,6 +1428,7 @@ const App = (() => {
     const statusEl = $('#playerStatus');
     $('#playerName').textContent = c.name;
     $('#playerGrp').textContent = c.group || 'Sin categoría';
+    setupMediaSession(c, vid);
 
     const lb = $('#playerListBtn');
     lb._ch = c;
@@ -1494,7 +1512,6 @@ const App = (() => {
   }
 
   async function enterPiP() {
-    localStorage.setItem('ds_pip_on_hide', '1');
     const vid = $('#mainVid');
     if (!vid) return;
     try {
@@ -2028,17 +2045,41 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
       $('#topNav').classList.toggle('solid', window.scrollY > 20);
     });
 
-    document.addEventListener('visibilitychange', async () => {
-      if (document.visibilityState !== 'hidden') return;
+    let pipWasActive = false;
+    let pipWasPlaying = false;
+
+    document.addEventListener('visibilitychange', () => {
       const vid = $('#mainVid');
-      if (!$('#playerFs').classList.contains('open') || !vid || vid.paused) return;
-      // Intento compatible; algunos navegadores/WebView rechazan PiP sin gesto del usuario.
-      if (localStorage.getItem('ds_pip_on_hide') !== '1') return;
-      try {
-        if (document.pictureInPictureEnabled && !document.pictureInPictureElement && vid.requestPictureInPicture) {
-          await vid.requestPictureInPicture();
+      const shell = $('#playerFs');
+      if (!vid || !shell || !shell.classList.contains('open')) return;
+      if (document.visibilityState === 'visible') {
+        try {
+          const h = PlayerService._getHls?.();
+          if (h && !h.destroyed) {
+            h.startLoad(-1);
+            if (vid.readyState < 3) h.recoverMediaError?.();
+          }
+        } catch {}
+        if (pipWasActive && pipWasPlaying && vid.paused) {
+          vid.play().catch(() => {});
         }
-      } catch {}
+      }
+    });
+
+    $('#mainVid').addEventListener('enterpictureinpicture', () => {
+      pipWasActive = true;
+      // Guardamos el estado justo al entrar. No lo modificamos ante un pause
+      // posterior, porque Android/Chrome puede pausar el vídeo temporalmente
+      // mientras la ventana flotante sigue activa.
+      pipWasPlaying = !$('#mainVid').paused;
+    });
+    $('#mainVid').addEventListener('leavepictureinpicture', () => {
+      const shouldResume = pipWasActive && pipWasPlaying;
+      pipWasActive = false;
+      if (shouldResume && $('#mainVid').paused) {
+        $('#mainVid').play().catch(() => {});
+      }
+      pipWasPlaying = false;
     });
 
     $$('.nav-links a').forEach(a => {
