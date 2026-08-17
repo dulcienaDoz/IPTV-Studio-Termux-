@@ -946,6 +946,8 @@ const App = (() => {
   let allRowsData = [];
   let lastFocusedElement = null;
   let playerHideTimer = null;
+  let playerHistoryActive = false;
+  let profileHistoryActive = false;
   let searchResults = [];
   let searchShown = 0;
   const SEARCH_PAGE_SIZE = 20;
@@ -1419,6 +1421,10 @@ const App = (() => {
     showPlayerUI(false);
     document.body.style.overflow = 'hidden';
     lastFocusedElement = document.activeElement;
+    if (!playerHistoryActive) {
+      playerHistoryActive = true;
+      history.pushState({ dulcinea: 'player' }, '', window.location.href);
+    }
     $('#playerBack').focus();
 
     PlayerService.play(c, vid,
@@ -1497,7 +1503,7 @@ const App = (() => {
     });
   }
 
-  function stopPlayer() {
+  function stopPlayerInternal() {
     clearTimeout(playerHideTimer);
     closePlayerOptions();
     const vid = $('#mainVid');
@@ -1507,7 +1513,16 @@ const App = (() => {
     PlayerService.stop(vid);
     $('#playerFs').classList.remove('open');
     document.body.style.overflow = '';
+    playerHistoryActive = false;
     if (lastFocusedElement) lastFocusedElement.focus();
+  }
+
+  function stopPlayer() {
+    if (playerHistoryActive) {
+      history.back();
+      return;
+    }
+    stopPlayerInternal();
   }
 
   // ── Sidebar ──
@@ -1641,6 +1656,11 @@ const App = (() => {
     $('#activePic').style.background = 'linear-gradient(135deg,#E50914,#8b0000)';
     $('#activePic').textContent = '📂';
 
+    // Estado base de navegación: el primer 'Atrás' desde el reproductor vuelve a la app.
+    if (!history.state || history.state.dulcinea !== 'base') {
+      history.replaceState({ dulcinea: 'base' }, '', window.location.href);
+    }
+
     try {
       const lastId = localStorage.getItem('ds_last_saved_list');
       if (lastId) {
@@ -1680,6 +1700,21 @@ const App = (() => {
       $('#playerFullscreenBtn').textContent = fs ? '↙' : '⛶';
       $('#playerFullscreenBtn').title = fs ? 'Salir de pantalla completa' : 'Pantalla completa';
       $('#optFullscreen').innerHTML = fs ? '↙&nbsp; Salir de pantalla completa' : '⛶&nbsp; Pantalla completa';
+    });
+    window.addEventListener('popstate', () => {
+      if (playerHistoryActive && $('#playerFs').classList.contains('open')) {
+        stopPlayerInternal();
+        return;
+      }
+      if (profileHistoryActive && $('#profilesScreen').classList.contains('open')) {
+        closeProfilesInternal();
+        return;
+      }
+      // Evita que vistas internas abiertas provoquen la salida de la app.
+      if ($('#drawer').classList.contains('open')) { closeDrawer(); return; }
+      if ($('#searchOverlay').classList.contains('open')) { closeSearch(); return; }
+      if ($('#modalBg').classList.contains('open')) { closeDetail(); return; }
+      if ($('#sidebar').classList.contains('open')) { closeSidebar(); return; }
     });
     $('#profileRefreshLists').addEventListener('click', refreshProfileSavedLists);
     $('#hamburgerBtn').addEventListener('click', () => {
@@ -2031,14 +2066,32 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
   }
 
   function openProfiles() {
+    if ($('#profilesScreen').classList.contains('open')) {
+      refreshProfileSavedLists();
+      return;
+    }
     $('#profilesScreen').classList.add('open');
     lastFocusedElement = document.activeElement;
+    if (!profileHistoryActive) {
+      profileHistoryActive = true;
+      history.pushState({ dulcinea: 'profiles' }, '', window.location.href);
+    }
     refreshProfileSavedLists();
   }
 
-  function closeProfiles() {
+  function closeProfilesInternal() {
     $('#profilesScreen').classList.remove('open');
+    profileHistoryActive = false;
     if (lastFocusedElement) lastFocusedElement.focus();
+  }
+
+  function closeProfiles() {
+    if (!$('#profilesScreen').classList.contains('open')) return;
+    if (profileHistoryActive) {
+      history.back();
+      return;
+    }
+    closeProfilesInternal();
   }
 
   function switchProfile() { openProfiles(); }
