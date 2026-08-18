@@ -2464,5 +2464,129 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
 document.addEventListener('DOMContentLoaded', () => App.init());
 window.App = App;
 </script>
+
+<script>
+/* ==========================================================
+   DIAGNÓSTICO HLS 60s — NO CAMBIA AUTOMÁTICAMENTE DE RUTA
+   Solo para identificar qué ocurre después del primer segundo.
+   ========================================================== */
+window.DulcineaHls60Diagnostic = {
+  durationMs: 60000,
+  events: [],
+  stats: { fragLoaded: 0, fragErrors: 0, bufferAppended: 0, mediaErrors: 0, networkErrors: 0 },
+  start(url, video, output) {
+    const D = this;
+    D.events = [];
+    D.stats = { fragLoaded: 0, fragErrors: 0, bufferAppended: 0, mediaErrors: 0, networkErrors: 0 };
+    if (!window.Hls || !Hls.isSupported()) {
+      output('❌ HLS.js no está disponible en este navegador.');
+      return;
+    }
+
+    let hls = null;
+    let stopped = false;
+    const startedAt = performance.now();
+    const log = (msg) => {
+      const t = ((performance.now() - startedAt) / 1000).toFixed(2);
+      const line = `[${t}s] ${msg}`;
+      D.events.push(line);
+      output(line);
+    };
+
+    const cleanup = () => {
+      if (stopped) return;
+      stopped = true;
+      try { if (hls && !hls.destroyed) hls.destroy(); } catch {}
+      try { video.pause(); } catch {}
+      log(`FIN — segmentos: ${D.stats.fragLoaded}, errores de segmento: ${D.stats.fragErrors}, buffer: ${D.stats.bufferAppended}, errores media: ${D.stats.mediaErrors}, errores red: ${D.stats.networkErrors}`);
+    };
+
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+
+    hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+      backBufferLength: 15,
+      capLevelToPlayerSize: false,
+      startFragPrefetch: false,
+      manifestLoadingMaxRetry: 2,
+      levelLoadingMaxRetry: 2,
+      fragLoadingMaxRetry: 2,
+      fragLoadingRetryDelay: 1000
+    });
+
+    hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+      log('MEDIA_ATTACHED');
+      hls.loadSource(url);
+    });
+
+    hls.on(Hls.Events.MANIFEST_LOADING, (_, d) => log('MANIFEST_LOADING ' + (d?.url || '')));
+    hls.on(Hls.Events.MANIFEST_LOADED, (_, d) => log('MANIFEST_LOADED'));
+    hls.on(Hls.Events.MANIFEST_PARSED, (_, d) => {
+      log(`MANIFEST_PARSED — niveles: ${(d?.levels || []).length}`);
+      video.play().then(() => log('PLAY iniciado')).catch(e => log('PLAY rechazado: ' + (e?.name || e?.message || e)));
+    });
+
+    hls.on(Hls.Events.LEVEL_LOADING, (_, d) => log(`LEVEL_LOADING level=${d?.level} id=${d?.id}`));
+    hls.on(Hls.Events.LEVEL_LOADED, (_, d) => log(`LEVEL_LOADED level=${d?.level} details=${d?.details ? 'OK' : 'sin details'}`));
+
+    hls.on(Hls.Events.FRAG_LOADING, (_, d) => log(`FRAG_LOADING sn=${d?.frag?.sn} type=${d?.frag?.type || ''}`));
+    hls.on(Hls.Events.FRAG_LOADED, (_, d) => {
+      D.stats.fragLoaded++;
+      log(`FRAG_LOADED sn=${d?.frag?.sn} bytes=${d?.stats?.loaded || '?'} type=${d?.frag?.type || ''}`);
+    });
+    hls.on(Hls.Events.FRAG_LOAD_EMERGENCY_ABORTED, (_, d) => log(`FRAG_LOAD_EMERGENCY_ABORTED sn=${d?.frag?.sn}`));
+
+    hls.on(Hls.Events.BUFFER_APPENDING, (_, d) => log(`BUFFER_APPENDING type=${d?.type || ''} bytes=${d?.data?.byteLength || '?'}`));
+    hls.on(Hls.Events.BUFFER_APPENDED, (_, d) => {
+      D.stats.bufferAppended++;
+      log(`BUFFER_APPENDED type=${d?.type || ''} timeRanges=${video.buffered.length}`);
+    });
+    hls.on(Hls.Events.BUFFER_EOS, () => log('BUFFER_EOS'));
+
+    hls.on(Hls.Events.ERROR, (_, d) => {
+      const detail = d?.details || 'sin detalle';
+      if (d?.type === Hls.ErrorTypes.NETWORK_ERROR) D.stats.networkErrors++;
+      if (d?.type === Hls.ErrorTypes.MEDIA_ERROR) D.stats.mediaErrors++;
+      if (d?.details && /FRAG.*ERROR|LOAD_ERROR/i.test(d.details)) D.stats.fragErrors++;
+      log(`HLS ERROR type=${d?.type || '?'} detail=${detail} fatal=${!!d?.fatal} response=${d?.response?.code || '?'}`);
+
+      // Importante: NO cambia a Termux ni a otra ruta.
+      if (d?.fatal) log('ERROR FATAL — se mantiene únicamente esta prueba HLS.');
+    });
+
+    ['loadedmetadata','loadeddata','canplay','playing','waiting','stalled','progress','timeupdate','pause','ended','error','resize'].forEach(ev => {
+      video.addEventListener(ev, () => {
+        const err = video.error ? ` mediaError=${video.error.code}:${video.error.message || ''}` : '';
+        log(`VIDEO ${ev} t=${video.currentTime.toFixed(3)} size=${video.videoWidth}x${video.videoHeight} ready=${video.readyState} buffered=${video.buffered.length}${err}`);
+      });
+    });
+
+    const timer = setTimeout(() => {
+      clearInterval(watch);
+      log(`60s completados. Último tiempo=${video.currentTime.toFixed(3)} size=${video.videoWidth}x${video.videoHeight} paused=${video.paused} ready=${video.readyState}`);
+      cleanup();
+    }, D.durationMs);
+
+    const watch = setInterval(() => {
+      if (stopped) { clearInterval(watch); return; }
+      log(`WATCH t=${video.currentTime.toFixed(3)} paused=${video.paused} ready=${video.readyState} size=${video.videoWidth}x${video.videoHeight} buffered=${video.buffered.length}`);
+    }, 5000);
+
+    hls.attachMedia(video);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(watch);
+      cleanup();
+    };
+  }
+};
+</script>
+
 </body>
 </html>
