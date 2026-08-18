@@ -862,10 +862,9 @@ const PlayerService = (() => {
     const isExplicitHls = isHlsUrl(url);
     let playUrl = url;
 
-    try {
-      const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 500);
-      if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
-    } catch {}
+    // DIAGNÓSTICO: mantener siempre la URL original.
+    // No sustituirla automáticamente por Termux /stream.
+    // Esto permite aislar si el corte de reproducción proviene del proxy local.
 
     try {
       // Preferimos HLS.js para HLS explícito y también hacemos un intento
@@ -1643,6 +1642,9 @@ const App = (() => {
       document.exitFullscreen().catch(() => {});
     }
     unlockOrientation();
+    if (document.pictureInPictureElement && document.exitPictureInPicture) {
+      document.exitPictureInPicture().catch(() => {});
+    }
     PlayerService.stop(vid);
     $('#playerFs').classList.remove('open');
     document.body.style.overflow = '';
@@ -1843,8 +1845,7 @@ const App = (() => {
     $('#playerFs').addEventListener('touchstart', () => showPlayerUI(true), { passive:true });
     $('#optFullscreen').addEventListener('click', () => togglePlayerFullscreen());
     $('#optMute').addEventListener('click', () => { const v=$('#mainVid'); v.muted=!v.muted; $('#optMute').innerHTML = v.muted ? '🔇&nbsp; Activar sonido' : '🔊&nbsp; Silenciar'; closePlayerOptions(); });
-    $('#optPip').style.display = 'none';
-    $('#optPip').disabled = true;
+    $('#optPip').addEventListener('click', enterPiP);
     $('#optReload').addEventListener('click', reloadCurrentPlayer);
     $('#optClose').addEventListener('click', stopPlayer);
     document.addEventListener('fullscreenchange', () => {
@@ -2115,10 +2116,42 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
       $('#topNav').classList.toggle('solid', window.scrollY > 20);
     });
 
-    // PRUEBA DIAGNÓSTICA: PiP y recuperación por visibilitychange desactivados.
-    // Esto permite aislar si el corte de reproducción viene de esa lógica.
     let pipWasActive = false;
     let pipWasPlaying = false;
+
+    document.addEventListener('visibilitychange', () => {
+      const vid = $('#mainVid');
+      const shell = $('#playerFs');
+      if (!vid || !shell || !shell.classList.contains('open')) return;
+      if (document.visibilityState === 'visible') {
+        try {
+          const h = PlayerService._getHls?.();
+          if (h && !h.destroyed) {
+            h.startLoad(-1);
+            if (vid.readyState < 3) h.recoverMediaError?.();
+          }
+        } catch {}
+        if (pipWasActive && pipWasPlaying && vid.paused) {
+          vid.play().catch(() => {});
+        }
+      }
+    });
+
+    $('#mainVid').addEventListener('enterpictureinpicture', () => {
+      pipWasActive = true;
+      // Guardamos el estado justo al entrar. No lo modificamos ante un pause
+      // posterior, porque Android/Chrome puede pausar el vídeo temporalmente
+      // mientras la ventana flotante sigue activa.
+      pipWasPlaying = !$('#mainVid').paused;
+    });
+    $('#mainVid').addEventListener('leavepictureinpicture', () => {
+      const shouldResume = pipWasActive && pipWasPlaying;
+      pipWasActive = false;
+      if (shouldResume && $('#mainVid').paused) {
+        $('#mainVid').play().catch(() => {});
+      }
+      pipWasPlaying = false;
+    });
 
     $$('.nav-links a').forEach(a => {
       a.addEventListener('click', (e) => {
