@@ -826,9 +826,14 @@ const PlayerService = (() => {
   }
 
   function isHlsUrl(url) {
-    return /\.m3u8(?:$|[?#])/i.test(url) ||
+    // Muchos servidores IPTV entregan una playlist HLS aunque el endpoint
+    // termine en .m3u (no necesariamente .m3u8). HLS.js analiza el contenido
+    // real del manifiesto, por lo que también tratamos .m3u de /live/ como
+    // candidato HLS. Si no es HLS, el manejador de error vuelve al nativo.
+    return /\.(?:m3u8|m3u)(?:$|[?#])/i.test(url) ||
            /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
-           /\/(?:hls|hls_live)\//i.test(url);
+           /\/(?:hls|hls_live)\//i.test(url) ||
+           /\/live\//i.test(url);
   }
 
   async function fetchWithTimeout(url, timeout = 60000) {
@@ -856,7 +861,7 @@ const PlayerService = (() => {
     statusCallback('Preparando...');
 
     const url = channel.url;
-    const isHls = isHlsUrl(url);
+    const isExplicitHls = isHlsUrl(url);
     let playUrl = url;
 
     try {
@@ -864,56 +869,110 @@ const PlayerService = (() => {
       if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
     } catch {}
 
-    try {
-      if (isHls && window.Hls && Hls.isSupported()) {
-        statusCallback('Conectando HLS...');
-        hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          maxBufferLength: 12,
-          maxMaxBufferLength: 24,
-          backBufferLength: 8,
-          capLevelToPlayerSize: true,
-          manifestLoadingMaxRetry: 5,
-          levelLoadingMaxRetry: 5,
-          fragLoadingMaxRetry: 5,
-          fragLoadingRetryDelay: 1000,
-          startFragPrefetch: true,
-          abrEwmaDefaultEstimate: 1e6,
-        });
+    // IMPORTANTE: no enviamos todas las URLs directamente a HLS.js.
+    // Muchas listas contienen MP4/TS/u otras fuentes HTTP que HLS.js no debe
+    // intentar interpretar. Primero usamos HLS.js cuando sabemos que es HLS.
+    // Para URLs desconocidas usamos el reproductor nativo y solo pasamos a HLS
+    // si detectamos el caso concreto de audio sin imagen.
+    const canUseHls = window.Hls && Hls.isSupported();
 
-        hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          statusCallback('HLS listo. Reproduciendo...', 'ok');
-          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
-        });
-        hls.on(Hls.Events.ERROR, (_, data) => {
-          if (data.fatal) {
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              statusCallback('Error de red. Reintentando...', 'err');
-              if (retryCount < MAX_RETRIES) {
-                retryCount++;
-                setTimeout(() => {
-                  if (hls) hls.startLoad(-1);
-                }, Math.min(8000, 1000 * retryCount));
-              } else {
-                errorCallback('No se pudo conectar después de varios intentos.');
-              }
-            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-              statusCallback('Recuperando vídeo...', 'err');
-              hls.recoverMediaError();
-            } else {
-              errorCallback('Error fatal en la reproducción.');
-            }
-          }
-        });
-        hls.attachMedia(videoElement);
-      } else {
-        statusCallback('Abriendo vídeo...');
-        videoElement.src = playUrl;
-        videoElement.load();
+    const startHls = (reason = 'Conectando HLS...', keepNativeFallback = false) => {
+      if (!canUseHls) return false;
+      destroyHls();
+      retryCount = 0;
+      statusCallback(reason);
+
+      hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        maxBufferLength: 12,
+        maxMaxBufferLength: 24,
+        backBufferLength: 8,
+        capLevelToPlayerSize: true,
+        manifestLoadingMaxRetry: 5,
+        levelLoadingMaxRetry: 5,
+        fragLoadingMaxRetry: 5,
+        fragLoadingRetryDelay: 1000,
+        startFragPrefetch: true,
+        abrEwmaDefaultEstimate: 1e6,
+      });
+
+      let hlsHadManifest = false;
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+        if (hls && !hls.destroyed) hls.loadSource(playUrl);
+      });
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        hlsHadManifest = true;
+        statusCallback('HLS listo. Reproduciendo...', 'ok');
         videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+      });
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal) return;
+
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          statusCallback('Error de red. Reintentando...', 'err');
+          if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            setTimeout(() => {
+              if (hls && !hls.destroyed) hls.startLoad(-1);
+            }, Math.min(8000, 1000 * retryCount));
+          } else if (keepNativeFallback && !hlsHadManifest) {
+            // La URL desconocida probablemente no era HLS. Volvemos al nativo.
+            fallbackToNative();
+          } else {
+            errorCallback('No se pudo conectar después de varios intentos.');
+          }
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          statusCallback('Recuperando vídeo...', 'err');
+          try {
+            if (hls && !hls.destroyed) hls.recoverMediaError();
+          } catch {}
+        } else {
+          const detail = String(data.details || '');
+          if (keepNativeFallback && !hlsHadManifest) {
+            fallbackToNative();
+          } else if (/CODECS|INCOMPATIBLE|BUFFER/i.test(detail)) {
+            errorCallback('El vídeo usa un códec o formato no compatible con este dispositivo.');
+          } else {
+            errorCallback('El formato de vídeo no es compatible o la fuente está dañada.');
+          }
+        }
+      });
+
+      hls.attachMedia(videoElement);
+      return true;
+    };
+
+    const fallbackToNative = () => {
+      destroyHls();
+      retryCount = 0;
+      statusCallback('Probando reproductor nativo...');
+      videoElement.pause();
+      videoElement.removeAttribute('src');
+      videoElement.load();
+      videoElement.src = playUrl;
+      videoElement.load();
+      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+    };
+
+    try {
+      if (isExplicitHls) {
+        if (canUseHls) {
+          // Incluye endpoints .m3u: algunos servidores IPTV los usan como
+          // manifiestos HLS aunque la extensión no sea .m3u8.
+          startHls('Conectando transmisión...', true);
+        } else {
+          fallbackToNative();
+        }
+        return;
       }
+
+      // Para formatos que no parecen HLS (MP4 y otros formatos nativos),
+      // dejamos que Chrome/Android los reproduzca directamente.
+      statusCallback('Abriendo vídeo...');
+      videoElement.src = playUrl;
+      videoElement.load();
+      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
     } catch (err) {
       errorCallback('Error al iniciar: ' + err.message);
     }
