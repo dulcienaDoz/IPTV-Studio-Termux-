@@ -1008,7 +1008,7 @@ const PlayerService = (() => {
     const originalUrl = channel.url;
     const termuxUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(originalUrl);
 
-    const waitAttempt = (label, setup, cleanup, timeoutMs = 6500) => new Promise(resolve => {
+    const waitAttempt = (label, setup, cleanup, timeoutMs = 60000) => new Promise(resolve => {
       let done = false;
       let timer = null;
       const finish = (result) => {
