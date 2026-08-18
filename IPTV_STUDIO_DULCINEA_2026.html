@@ -530,6 +530,7 @@ ul { list-style: none; }
       <button class="player-option" id="optMute" type="button">🔊&nbsp; Silenciar</button>
       <button class="player-option" id="optPip" type="button">🪟&nbsp; Ventana flotante</button>
       <button class="player-option" id="optReload" type="button">↻&nbsp; Recargar reproducción</button>
+      <button class="player-option" id="optDiagnose" type="button">🧪&nbsp; Diagnosticar reproducción</button>
       <button class="player-option danger" id="optClose" type="button">✕&nbsp; Cerrar reproductor</button>
     </div>
   </div>
@@ -826,14 +827,9 @@ const PlayerService = (() => {
   }
 
   function isHlsUrl(url) {
-    // Muchos servidores IPTV entregan una playlist HLS aunque el endpoint
-    // termine en .m3u (no necesariamente .m3u8). HLS.js analiza el contenido
-    // real del manifiesto, por lo que también tratamos .m3u de /live/ como
-    // candidato HLS. Si no es HLS, el manejador de error vuelve al nativo.
-    return /\.(?:m3u8|m3u)(?:$|[?#])/i.test(url) ||
+    return /\.m3u8(?:$|[?#])/i.test(url) ||
            /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
-           /\/(?:hls|hls_live)\//i.test(url) ||
-           /\/live\//i.test(url);
+           /\/(?:hls|hls_live)\//i.test(url);
   }
 
   async function fetchWithTimeout(url, timeout = 60000) {
@@ -861,6 +857,9 @@ const PlayerService = (() => {
     statusCallback('Preparando...');
 
     const url = channel.url;
+    // Algunas fuentes HLS no terminan en .m3u8 (redirecciones, tokens,
+    // proxys o URLs dinámicas). Por eso la decisión no puede depender
+    // únicamente de la extensión.
     const isExplicitHls = isHlsUrl(url);
     let playUrl = url;
 
@@ -869,110 +868,125 @@ const PlayerService = (() => {
       if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
     } catch {}
 
-    // IMPORTANTE: no enviamos todas las URLs directamente a HLS.js.
-    // Muchas listas contienen MP4/TS/u otras fuentes HTTP que HLS.js no debe
-    // intentar interpretar. Primero usamos HLS.js cuando sabemos que es HLS.
-    // Para URLs desconocidas usamos el reproductor nativo y solo pasamos a HLS
-    // si detectamos el caso concreto de audio sin imagen.
-    const canUseHls = window.Hls && Hls.isSupported();
-
-    const startHls = (reason = 'Conectando HLS...', keepNativeFallback = false) => {
-      if (!canUseHls) return false;
-      destroyHls();
-      retryCount = 0;
-      statusCallback(reason);
-
-      hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false,
-        maxBufferLength: 12,
-        maxMaxBufferLength: 24,
-        backBufferLength: 8,
-        capLevelToPlayerSize: true,
-        manifestLoadingMaxRetry: 5,
-        levelLoadingMaxRetry: 5,
-        fragLoadingMaxRetry: 5,
-        fragLoadingRetryDelay: 1000,
-        startFragPrefetch: true,
-        abrEwmaDefaultEstimate: 1e6,
-      });
-
-      let hlsHadManifest = false;
-      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        if (hls && !hls.destroyed) hls.loadSource(playUrl);
-      });
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        hlsHadManifest = true;
-        statusCallback('HLS listo. Reproduciendo...', 'ok');
-        videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
-      });
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (!data.fatal) return;
-
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-          statusCallback('Error de red. Reintentando...', 'err');
-          if (retryCount < MAX_RETRIES) {
-            retryCount++;
-            setTimeout(() => {
-              if (hls && !hls.destroyed) hls.startLoad(-1);
-            }, Math.min(8000, 1000 * retryCount));
-          } else if (keepNativeFallback && !hlsHadManifest) {
-            // La URL desconocida probablemente no era HLS. Volvemos al nativo.
-            fallbackToNative();
-          } else {
-            errorCallback('No se pudo conectar después de varios intentos.');
-          }
-        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-          statusCallback('Recuperando vídeo...', 'err');
-          try {
-            if (hls && !hls.destroyed) hls.recoverMediaError();
-          } catch {}
-        } else {
-          const detail = String(data.details || '');
-          if (keepNativeFallback && !hlsHadManifest) {
-            fallbackToNative();
-          } else if (/CODECS|INCOMPATIBLE|BUFFER/i.test(detail)) {
-            errorCallback('El vídeo usa un códec o formato no compatible con este dispositivo.');
-          } else {
-            errorCallback('El formato de vídeo no es compatible o la fuente está dañada.');
-          }
-        }
-      });
-
-      hls.attachMedia(videoElement);
-      return true;
-    };
-
-    const fallbackToNative = () => {
-      destroyHls();
-      retryCount = 0;
-      statusCallback('Probando reproductor nativo...');
-      videoElement.pause();
-      videoElement.removeAttribute('src');
-      videoElement.load();
-      videoElement.src = playUrl;
-      videoElement.load();
-      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
-    };
-
     try {
-      if (isExplicitHls) {
-        if (canUseHls) {
-          // Incluye endpoints .m3u: algunos servidores IPTV los usan como
-          // manifiestos HLS aunque la extensión no sea .m3u8.
-          startHls('Conectando transmisión...', true);
-        } else {
-          fallbackToNative();
-        }
-        return;
-      }
+      // Preferimos HLS.js para HLS explícito y también hacemos un intento
+      // controlado para URLs de streaming sin extensión .m3u8. Si no son HLS,
+      // el fallback nativo se activa automáticamente. Esto evita el caso en
+      // que Chrome reproduzca solo el audio porque la URL HLS fue detectada
+      // como una fuente de vídeo normal.
+      const canUseHls = window.Hls && Hls.isSupported();
+      const shouldTryHls = canUseHls && (isExplicitHls || /^(https?:)?\/\//i.test(playUrl));
+      if (shouldTryHls) {
+        statusCallback(isExplicitHls ? 'Conectando HLS...' : 'Detectando transmisión...');
+        hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          maxBufferLength: 12,
+          maxMaxBufferLength: 24,
+          backBufferLength: 8,
+          capLevelToPlayerSize: true,
+          manifestLoadingMaxRetry: 5,
+          levelLoadingMaxRetry: 5,
+          fragLoadingMaxRetry: 5,
+          fragLoadingRetryDelay: 1000,
+          startFragPrefetch: true,
+          abrEwmaDefaultEstimate: 1e6,
+        });
 
-      // Para formatos que no parecen HLS (MP4 y otros formatos nativos),
-      // dejamos que Chrome/Android los reproduzca directamente.
-      statusCallback('Abriendo vídeo...');
-      videoElement.src = playUrl;
-      videoElement.load();
-      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+        hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          statusCallback('HLS listo. Reproduciendo...', 'ok');
+          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+        });
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          if (!data.fatal) return;
+
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            statusCallback('Error de red. Reintentando...', 'err');
+            if (retryCount < MAX_RETRIES) {
+              retryCount++;
+              setTimeout(() => {
+                if (hls && !hls.destroyed) hls.startLoad(-1);
+              }, Math.min(8000, 1000 * retryCount));
+            } else if (!isExplicitHls) {
+              // Si la URL no parecía HLS, damos una oportunidad al reproductor
+              // nativo; puede ser MP4/TS u otro formato compatible.
+              fallbackToNative();
+            } else {
+              errorCallback('No se pudo conectar después de varios intentos.');
+            }
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            statusCallback('Recuperando vídeo...', 'err');
+            try {
+              if (hls && !hls.destroyed) hls.recoverMediaError();
+            } catch {}
+          } else {
+            if (!isExplicitHls) {
+              fallbackToNative();
+            } else {
+              const detail = String(data.details || '');
+              if (/CODECS|INCOMPATIBLE|BUFFER/i.test(detail)) {
+                errorCallback('El vídeo usa un códec o formato no compatible con este dispositivo.');
+              } else {
+                errorCallback('El formato de vídeo no es compatible o la fuente está dañada.');
+              }
+            }
+          }
+        });
+
+        function fallbackToNative() {
+          if (hls && !hls.destroyed) hls.destroy();
+          hls = null;
+          retryCount = 0;
+          statusCallback('Probando reproductor nativo...');
+          videoElement.pause();
+          videoElement.removeAttribute('src');
+          videoElement.load();
+          videoElement.src = playUrl;
+          videoElement.load();
+          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+        }
+
+        // Detecta el caso concreto: el audio avanza pero no aparecen cuadros
+        // de vídeo. No usamos loadedmetadata para cancelar el diagnóstico porque
+        // ese evento también puede ocurrir cuando solo existe una pista de audio.
+        let watchdogDone = false;
+        let videoWatchdog = null;
+        const clearVideoWatchdog = () => {
+          if (watchdogDone) return;
+          watchdogDone = true;
+          if (videoWatchdog) {
+            clearInterval(videoWatchdog);
+            videoWatchdog = null;
+          }
+        };
+        const checkVideoTrack = () => {
+          if (watchdogDone || !videoElement) return;
+          if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+            clearVideoWatchdog();
+            return;
+          }
+          if (!hls || hls.destroyed) return;
+          if (!videoElement.paused && videoElement.currentTime > 0) {
+            statusCallback('Audio detectado; recuperando vídeo...', 'err');
+            try {
+              hls.recoverMediaError();
+              hls.startLoad(-1);
+            } catch {}
+          }
+        };
+        videoElement.addEventListener('loadeddata', checkVideoTrack);
+        videoElement.addEventListener('playing', checkVideoTrack);
+        videoElement.addEventListener('resize', checkVideoTrack);
+        videoWatchdog = setInterval(checkVideoTrack, 2500);
+        setTimeout(clearVideoWatchdog, 12000);
+        hls.attachMedia(videoElement);
+      } else {
+        statusCallback('Abriendo vídeo...');
+        videoElement.src = playUrl;
+        videoElement.load();
+        videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+      }
     } catch (err) {
       errorCallback('Error al iniciar: ' + err.message);
     }
@@ -989,9 +1003,122 @@ const PlayerService = (() => {
     if (abortController) { abortController.abort(); abortController = null; }
   }
 
+  function diagnose(channel, videoElement, statusCallback, errorCallback) {
+    if (!channel || !videoElement) return Promise.resolve({ ok:false, reason:'No hay canal seleccionado.' });
+    const originalUrl = channel.url;
+    const termuxUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(originalUrl);
+
+    const waitAttempt = (label, setup, cleanup, timeoutMs = 6500) => new Promise(resolve => {
+      let done = false;
+      let timer = null;
+      const finish = (result) => {
+        if (done) return;
+        done = true;
+        if (timer) clearTimeout(timer);
+        cleanup?.();
+        resolve(result);
+      };
+      const onPlaying = () => {
+        setTimeout(() => {
+          const hasVideo = videoElement.videoWidth > 0 && videoElement.videoHeight > 0;
+          const hasTime = Number.isFinite(videoElement.currentTime) && videoElement.currentTime > 0;
+          finish({ ok: hasVideo, audioOnly: !hasVideo && hasTime, label });
+        }, 700);
+      };
+      const onError = () => finish({ ok:false, label, reason:'video.error' });
+      videoElement.addEventListener('playing', onPlaying, { once:true });
+      videoElement.addEventListener('error', onError, { once:true });
+      timer = setTimeout(() => {
+        const hasVideo = videoElement.videoWidth > 0 && videoElement.videoHeight > 0;
+        const hasTime = Number.isFinite(videoElement.currentTime) && videoElement.currentTime > 0;
+        finish({ ok:hasVideo, audioOnly:!hasVideo && hasTime, label, reason:hasTime ? 'audio_sin_video' : 'timeout' });
+      }, timeoutMs);
+      setup();
+    });
+
+    const resetVideo = () => {
+      try { videoElement.pause(); } catch {}
+      videoElement.removeAttribute('src');
+      videoElement.load();
+      destroyHls();
+    };
+
+    const nativeAttempt = async (label, url) => waitAttempt(label, () => {
+      statusCallback('🧪 ' + label + ': probando…');
+      videoElement.src = url;
+      videoElement.load();
+      videoElement.play().catch(() => {});
+    }, resetVideo);
+
+    const hlsAttempt = async (label, url) => {
+      if (!(window.Hls && Hls.isSupported())) return { ok:false, label, reason:'HLS.js no disponible' };
+      return waitAttempt(label, () => {
+        statusCallback('🧪 ' + label + ': HLS.js…');
+        hls = new Hls({
+          enableWorker:true,
+          lowLatencyMode:false,
+          maxBufferLength:12,
+          maxMaxBufferLength:24,
+          backBufferLength:8,
+          manifestLoadingMaxRetry:1,
+          levelLoadingMaxRetry:1,
+          fragLoadingMaxRetry:1,
+          fragLoadingRetryDelay:500
+        });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => videoElement.play().catch(() => {}));
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          if (data?.fatal) finishDiagnosticHls(data);
+        });
+        hls.attachMedia(videoElement);
+        hls.loadSource(url);
+        function finishDiagnosticHls(data) {
+          // El evento se recoge por el timeout/error del vídeo; aquí solo aceleramos
+          // el diagnóstico sin lanzar excepciones al reproductor principal.
+          if (data?.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            try { hls.recoverMediaError(); } catch {}
+          }
+        }
+      }, resetVideo);
+    };
+
+    return (async () => {
+      statusCallback('🧪 Diagnóstico: probando URL original…');
+      let r = await nativeAttempt('Original · nativo', originalUrl);
+      if (r.ok) return { ...r, winner:'original-nativo' };
+
+      statusCallback('🧪 Original no reproduce vídeo. Probando Termux…');
+      let termuxAvailable = false;
+      try {
+        const resp = await fetchWithTimeout('http://127.0.0.1:8765/health', 900);
+        termuxAvailable = !!resp;
+      } catch {}
+      if (termuxAvailable) {
+        r = await nativeAttempt('Termux /stream · nativo', termuxUrl);
+        if (r.ok) return { ...r, winner:'termux-nativo' };
+      } else {
+        statusCallback('🧪 Termux no responde en 127.0.0.1:8765');
+      }
+
+      statusCallback('🧪 Probando HLS.js con la URL original…');
+      r = await hlsAttempt('Original · HLS.js', originalUrl);
+      if (r.ok) return { ...r, winner:'original-hls' };
+
+      if (termuxAvailable) {
+        statusCallback('🧪 Probando HLS.js mediante Termux…');
+        r = await hlsAttempt('Termux /stream · HLS.js', termuxUrl);
+        if (r.ok) return { ...r, winner:'termux-hls' };
+      }
+
+      resetVideo();
+      const reason = termuxAvailable ? 'Ninguna de las rutas produjo imagen.' : 'URL original y HLS.js no produjeron imagen; Termux no respondió.';
+      errorCallback(reason);
+      return { ok:false, reason, termuxAvailable };
+    })();
+  }
+
   function getCurrentChannel() { return currentChannel; }
 
-  return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
+  return { play, stop, diagnose, getCurrentChannel, isHlsUrl, _getHls: () => hls };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -1835,6 +1962,20 @@ const App = (() => {
     $('#optMute').addEventListener('click', () => { const v=$('#mainVid'); v.muted=!v.muted; $('#optMute').innerHTML = v.muted ? '🔇&nbsp; Activar sonido' : '🔊&nbsp; Silenciar'; closePlayerOptions(); });
     $('#optPip').addEventListener('click', enterPiP);
     $('#optReload').addEventListener('click', reloadCurrentPlayer);
+    $('#optDiagnose').addEventListener('click', async () => {
+      closePlayerOptions();
+      const c = PlayerService.getCurrentChannel();
+      if (!c) { toast('No hay un canal reproduciéndose.', 'warning'); return; }
+      await PlayerService.diagnose(c, $('#mainVid'), (msg, type) => {
+        const el = $('#playerStatus');
+        el.textContent = msg;
+        el.className = 'player-status' + (type ? ' ' + type : '');
+      }, (msg) => {
+        $('#playerStatus').textContent = '❌ ' + msg;
+        $('#playerStatus').className = 'player-status err';
+        toast(msg, 'error');
+      });
+    });
     $('#optClose').addEventListener('click', stopPlayer);
     document.addEventListener('fullscreenchange', () => {
       const fs = !!document.fullscreenElement;
@@ -1886,62 +2027,30 @@ const App = (() => {
       } catch (err) { setDStatus('Error: ' + err.message, 'err'); }
     });
 
-    function isXtreamPlaylistUrl(rawUrl) {
-      try {
-        const u = new URL(rawUrl);
-        return /\/get\.php$/i.test(u.pathname) &&
-          u.searchParams.has('username') && u.searchParams.has('password') &&
-          /^(?:m3u|m3u_plus|m3u8)$/i.test(u.searchParams.get('type') || 'm3u_plus');
-      } catch { return false; }
-    }
-
-    function buildPlaylistCandidates(rawUrl) {
-      const out = [rawUrl];
-      if (!isXtreamPlaylistUrl(rawUrl)) return out;
-      try {
-        const u = new URL(rawUrl);
-        // Para navegadores, HLS suele ser más compatible que MPEG-TS cuando
-        // el panel Xtream permite elegir el formato de salida. No sustituimos
-        // la URL original: la probamos primero y dejamos la alternativa después.
-        const hls = new URL(u.href);
-        hls.searchParams.set('output', 'm3u8');
-        if (hls.href !== rawUrl) out.push(hls.href);
-        if (u.protocol === 'http:') {
-          const https = new URL(u.href);
-          https.protocol = 'https:';
-          out.push(https.href);
-          const httpsHls = new URL(hls.href);
-          httpsHls.protocol = 'https:';
-          out.push(httpsHls.href);
-        }
-      } catch {}
-      return [...new Set(out)];
-    }
-
     $('#loadBtn').addEventListener('click', async () => {
       const u = $('#urlInput').value.trim();
       if (!u) { setDStatus('Pega una URL primero.', 'err'); return; }
       try { new URL(u); } catch { setDStatus('URL no válida.', 'err'); return; }
-      setDStatus(isXtreamPlaylistUrl(u) ? 'Detectada lista Xtream/M3U…' : 'Conectando...', 'loading');
+      setDStatus('Conectando...', 'loading');
       showLoadingBar(10);
       try {
         const method = $('#urlMode').value;
         let proxy = '';
         if (method === 'proxy') proxy = $('#proxyInput').value.trim();
-
-        // 1) Auto: Termux es la ruta preferida para URLs HTTP desde una página HTTPS.
-        // Evita que Chrome/GitHub bloquee el contenido mixto antes de descargar la lista.
-        if (method === 'auto') {
+        let urlToFetch = u;
+        if (method === 'proxy' && proxy) {
+          const sep = proxy.includes('?') ? '&' : '?';
+          urlToFetch = proxy + sep + 'url=' + encodeURIComponent(u);
+        } else if (method === 'auto') {
           try {
             const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(300000), cache: 'no-store' });
             if (resp.ok) {
               const text = await resp.text();
               const items = M3UParser.parse(text);
               if (items.length) {
-                currentListMeta = { id: null, name: $('#listNameInput').value.trim() || (isXtreamPlaylistUrl(u) ? 'Lista Xtream' : 'Mi lista IPTV'), url: u, method: 'Termux local', proxy: '', updatedAt: Date.now() };
-                $('#listNameInput').value = currentListMeta.name;
+                currentListMeta = { id: null, name: $('#listNameInput').value.trim() || 'Mi lista IPTV', url: u, method: 'Termux local', proxy: '', updatedAt: Date.now() };
                 setChannels(items);
-                setDStatus(`Cargado (Termux): ${items.length} elementos${isXtreamPlaylistUrl(u) ? ' · Xtream/M3U' : ''}.`, 'ok');
+                setDStatus(`Cargado (Termux): ${items.length} elementos.`, 'ok');
                 setTimeout(closeDrawer, 900);
                 showLoadingBar(100);
                 return;
@@ -1949,49 +2058,21 @@ const App = (() => {
             }
           } catch (e) {}
         }
-
-        // 2) Proxy explícito.
-        if (method === 'proxy' && proxy) {
-          const sep = proxy.includes('?') ? '&' : '?';
-          const resp = await fetch(proxy + sep + 'url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(120000), cache: 'no-store' });
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
-          const text = await resp.text();
-          const items = M3UParser.parse(text);
-          if (!items.length) throw new Error('El servidor proxy no devolvió una lista M3U válida.');
-          const autoName = new URL(u).hostname.replace(/^www\./, '');
-          currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || (isXtreamPlaylistUrl(u) ? 'Lista Xtream' : 'Mi lista IPTV'), url: u, method: 'proxy', proxy, updatedAt: Date.now() };
-          $('#listNameInput').value = currentListMeta.name;
-          setChannels(items);
-          setDStatus(`Cargado (proxy): ${items.length} elementos.`, 'ok');
-          setTimeout(closeDrawer, 900);
-          showLoadingBar(100);
-          return;
-        }
-
-        // 3) Directo: para Xtream probamos también HTTPS y salida HLS.
-        const candidates = buildPlaylistCandidates(u);
-        let lastErr = null;
-        for (const candidate of candidates) {
-          try {
-            const resp = await fetch(candidate, { signal: AbortSignal.timeout(120000), cache: 'no-store' });
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            const text = await resp.text();
-            const items = M3UParser.parse(text);
-            if (!items.length) throw new Error('No contiene entradas M3U válidas.');
-            const autoName = new URL(u).hostname.replace(/^www\./, '');
-            currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || (isXtreamPlaylistUrl(u) ? 'Lista Xtream' : 'Mi lista IPTV'), url: u, method: candidate === u ? 'directo' : 'directo (alternativa)', proxy: '', updatedAt: Date.now() };
-            $('#listNameInput').value = currentListMeta.name;
-            setChannels(items);
-            setDStatus(`Cargado (${currentListMeta.method}): ${items.length} elementos.`, 'ok');
-            setTimeout(closeDrawer, 900);
-            showLoadingBar(100);
-            return;
-          } catch (e) { lastErr = e; }
-        }
-        throw lastErr || new Error('No se pudo descargar la lista.');
+        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(120000), cache: 'no-store' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const text = await resp.text();
+        const items = M3UParser.parse(text);
+        if (!items.length) throw new Error('No se encontraron entradas M3U válidas.');
+        const autoName = new URL(u).hostname.replace(/^www\./, '');
+        currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || 'Mi lista IPTV', url: u, method: method === 'proxy' ? 'proxy' : 'directo', proxy: method === 'proxy' ? proxy : '', updatedAt: Date.now() };
+        $('#listNameInput').value = currentListMeta.name;
+        setChannels(items);
+        setDStatus(`Cargado (${currentListMeta.method}): ${items.length} elementos.`, 'ok');
+        setTimeout(closeDrawer, 900);
+        showLoadingBar(100);
       } catch (err) {
         const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
-          ? 'La descarga superó el tiempo máximo. Si la URL es HTTP, activa Termux o usa un proxy HTTPS.'
+          ? 'La descarga superó el tiempo máximo. Comprueba que Termux siga activo y vuelve a intentarlo.'
           : (err?.message || 'No se pudo cargar la lista.');
         setDStatus('Error: ' + msg, 'err');
         showLoadingBar(0);
@@ -2071,10 +2152,8 @@ const App = (() => {
         const proxied = await tryFetch('proxy', proxyUrl + sep + 'url=' + encodeURIComponent(sourceUrl), 120000);
         if (proxied) return proxied;
       }
-      for (const candidate of buildPlaylistCandidates(sourceUrl)) {
-        const direct = await tryFetch(candidate === sourceUrl ? 'directo' : 'directo alternativo', candidate, 120000);
-        if (direct) return direct;
-      }
+      const direct = await tryFetch('directo', sourceUrl, 120000);
+      if (direct) return direct;
       throw new Error(errors.join(' · ') || 'No se pudo descargar la lista.');
     }
 
