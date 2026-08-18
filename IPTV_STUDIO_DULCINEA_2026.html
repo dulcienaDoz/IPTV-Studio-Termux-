@@ -2476,6 +2476,7 @@ window.DulcineaHls60Diagnostic = {
   stats: { fragLoaded: 0, fragErrors: 0, bufferAppended: 0, mediaErrors: 0, networkErrors: 0 },
   start(url, video, output) {
     const D = this;
+    if (window.showHlsDiagnosticLog) window.showHlsDiagnosticLog();
     D.events = [];
     D.stats = { fragLoaded: 0, fragErrors: 0, bufferAppended: 0, mediaErrors: 0, networkErrors: 0 };
     if (!window.Hls || !Hls.isSupported()) {
@@ -2491,6 +2492,7 @@ window.DulcineaHls60Diagnostic = {
       const line = `[${t}s] ${msg}`;
       D.events.push(line);
       output(line);
+      if (window.setHlsDiagnosticOutput) window.setHlsDiagnosticOutput(line);
     };
 
     const cleanup = () => {
@@ -2586,6 +2588,62 @@ window.DulcineaHls60Diagnostic = {
     };
   }
 };
+</script>
+
+
+<style>
+#hlsDiagPanel{position:fixed;inset:8% 4%;z-index:99999;background:#101318;color:#e8edf2;border:1px solid #3a4654;border-radius:14px;padding:14px;display:none;box-shadow:0 20px 60px #000b;font:13px/1.35 monospace}
+#hlsDiagPanel.show{display:flex;flex-direction:column}
+#hlsDiagLog{flex:1;overflow:auto;white-space:pre-wrap;background:#080b0f;border-radius:10px;padding:10px;margin:10px 0}
+#hlsDiagBtns{display:flex;gap:8px;flex-wrap:wrap}
+#hlsDiagBtns button{padding:9px 12px;border:0;border-radius:9px}
+</style>
+<div id="hlsDiagPanel">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <strong>🧪 Diagnóstico HLS — registro</strong>
+    <button id="hlsDiagClose">✕</button>
+  </div>
+  <div id="hlsDiagStatus">Preparado.</div>
+  <pre id="hlsDiagLog"></pre>
+  <div id="hlsDiagBtns">
+    <button id="hlsDiagCopy">📋 Copiar registro</button>
+    <button id="hlsDiagSave">💾 Guardar TXT</button>
+    <button id="hlsDiagClear">🗑️ Limpiar</button>
+  </div>
+</div>
+<script>
+(function(){
+  const panel=document.getElementById('hlsDiagPanel');
+  const logEl=document.getElementById('hlsDiagLog');
+  const statusEl=document.getElementById('hlsDiagStatus');
+  window.showHlsDiagnosticLog=function(){
+    panel.classList.add('show');
+  };
+  window.setHlsDiagnosticOutput=function(line){
+    showHlsDiagnosticLog();
+    logEl.textContent += (logEl.textContent ? '\\n' : '') + line;
+    logEl.scrollTop=logEl.scrollHeight;
+    statusEl.textContent='Registro activo';
+  };
+  document.getElementById('hlsDiagClose').onclick=()=>panel.classList.remove('show');
+  document.getElementById('hlsDiagClear').onclick=()=>{logEl.textContent='';statusEl.textContent='Registro limpiado';};
+  document.getElementById('hlsDiagCopy').onclick=async()=>{
+    try{
+      await navigator.clipboard.writeText(logEl.textContent);
+      statusEl.textContent='✅ Registro copiado';
+    }catch{
+      statusEl.textContent='⚠️ No se pudo copiar automáticamente';
+    }
+  };
+  document.getElementById('hlsDiagSave').onclick=()=>{
+    const blob=new Blob([logEl.textContent],{type:'text/plain;charset=utf-8'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='diagnostico-hls.txt';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  };
+})();
 </script>
 
 </body>
