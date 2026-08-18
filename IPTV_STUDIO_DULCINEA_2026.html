@@ -592,7 +592,7 @@ ul { list-style: none; }
   <div class="field">
     <label for="urlMode">Método de carga</label>
     <select id="urlMode">
-      <option value="auto">Automático (Termux → directo)</option>
+      <option value="auto">Automático (Termux rápido → directo)</option>
       <option value="direct">Solo directo</option>
       <option value="proxy">Proxy personalizado</option>
     </select>
@@ -1880,7 +1880,7 @@ const App = (() => {
           urlToFetch = proxy + sep + 'url=' + encodeURIComponent(u);
         } else if (method === 'auto') {
           try {
-            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(3000), cache: 'no-store' });
+            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(15000), cache: 'no-store' });
             if (resp.ok) {
               const text = await resp.text();
               const items = M3UParser.parse(text);
@@ -1895,7 +1895,7 @@ const App = (() => {
             }
           } catch (e) {}
         }
-        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(30000), cache: 'no-store' });
+        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(90000), cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const text = await resp.text();
         const items = M3UParser.parse(text);
@@ -1909,7 +1909,7 @@ const App = (() => {
         showLoadingBar(100);
       } catch (err) {
         const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
-          ? 'La descarga superó el tiempo máximo. Comprueba que Termux siga activo y vuelve a intentarlo.'
+          ? 'La lista tardó demasiado en responder. Comprueba la URL y que Termux esté activo si usas el modo Automático.'
           : (err?.message || 'No se pudo cargar la lista.');
         setDStatus('Error: ' + msg, 'err');
         showLoadingBar(0);
