@@ -1872,46 +1872,26 @@ const App = (() => {
       showLoadingBar(10);
       try {
         const method = $('#urlMode').value;
-        let proxy = '';
-        if (method === 'proxy') proxy = $('#proxyInput').value.trim();
-        let urlToFetch = u;
-        if (method === 'proxy' && proxy) {
-          const sep = proxy.includes('?') ? '&' : '?';
-          urlToFetch = proxy + sep + 'url=' + encodeURIComponent(u);
-        } else if (method === 'auto') {
-          try {
-            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(15000), cache: 'no-store' });
-            if (resp.ok) {
-              const text = await resp.text();
-              const items = M3UParser.parse(text);
-              if (items.length) {
-                currentListMeta = { id: null, name: $('#listNameInput').value.trim() || 'Mi lista IPTV', url: u, method: 'Termux local', proxy: '', updatedAt: Date.now() };
-                setChannels(items);
-                setDStatus(`Cargado (Termux): ${items.length} elementos.`, 'ok');
-                setTimeout(closeDrawer, 900);
-                showLoadingBar(100);
-                return;
-              }
-            }
-          } catch (e) {}
-        }
-        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(90000), cache: 'no-store' });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const text = await resp.text();
-        const items = M3UParser.parse(text);
-        if (!items.length) throw new Error('No se encontraron entradas M3U válidas.');
-        const autoName = new URL(u).hostname.replace(/^www\./, '');
-        currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || 'Mi lista IPTV', url: u, method: method === 'proxy' ? 'proxy' : 'directo', proxy: method === 'proxy' ? proxy : '', updatedAt: Date.now() };
+        const proxy = method === 'proxy' ? $('#proxyInput').value.trim() : '';
+        const loaded = await fetchPlaylistText(u, method, proxy);
+        const items = loaded.items;
+
+        currentListMeta = {
+          id: null,
+          name: $('#listNameInput').value.trim() || new URL(u).hostname.replace(/^www\\./, '') || 'Mi lista IPTV',
+          url: u,
+          method: loaded.method || (method === 'proxy' ? 'proxy' : 'directo'),
+          proxy,
+          updatedAt: Date.now()
+        };
+
         $('#listNameInput').value = currentListMeta.name;
         setChannels(items);
         setDStatus(`Cargado (${currentListMeta.method}): ${items.length} elementos.`, 'ok');
         setTimeout(closeDrawer, 900);
         showLoadingBar(100);
       } catch (err) {
-        const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
-          ? 'La lista tardó demasiado en responder. Comprueba la URL y que Termux esté activo si usas el modo Automático.'
-          : (err?.message || 'No se pudo cargar la lista.');
-        setDStatus('Error: ' + msg, 'err');
+        setDStatus('Error: ' + (err?.message || 'No se pudo cargar la lista.'), 'err');
         showLoadingBar(0);
       }
     });
@@ -1981,7 +1961,7 @@ const App = (() => {
       };
 
       if (method === 'auto' || method === 'Termux local' || method === 'termux') {
-        const local = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 300000);
+        const local = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 15000);
         if (local) return local;
       }
       if ((method === 'proxy' || proxyUrl) && proxyUrl) {
@@ -1989,7 +1969,7 @@ const App = (() => {
         const proxied = await tryFetch('proxy', proxyUrl + sep + 'url=' + encodeURIComponent(sourceUrl), 120000);
         if (proxied) return proxied;
       }
-      const direct = await tryFetch('directo', sourceUrl, 120000);
+      const direct = await tryFetch('directo', sourceUrl, 90000);
       if (direct) return direct;
       throw new Error(errors.join(' · ') || 'No se pudo descargar la lista.');
     }
