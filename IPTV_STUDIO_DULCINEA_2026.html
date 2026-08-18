@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1881,7 +1880,7 @@ const App = (() => {
           urlToFetch = proxy + sep + 'url=' + encodeURIComponent(u);
         } else if (method === 'auto') {
           try {
-            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(300000), cache: 'no-store' });
+            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(3000), cache: 'no-store' });
             if (resp.ok) {
               const text = await resp.text();
               const items = M3UParser.parse(text);
@@ -1896,7 +1895,7 @@ const App = (() => {
             }
           } catch (e) {}
         }
-        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(120000), cache: 'no-store' });
+        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(30000), cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const text = await resp.text();
         const items = M3UParser.parse(text);
