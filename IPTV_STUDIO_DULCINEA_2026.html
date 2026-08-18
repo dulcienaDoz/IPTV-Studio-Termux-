@@ -1004,116 +1004,124 @@ const PlayerService = (() => {
   }
 
   function diagnose(channel, videoElement, statusCallback, errorCallback) {
-    if (!channel || !videoElement) return Promise.resolve({ ok:false, reason:'No hay canal seleccionado.' });
-    const originalUrl = channel.url;
-    const termuxUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(originalUrl);
+    if (!channel || !videoElement) return Promise.resolve({ok:false, reason:'No hay canal seleccionado.'});
 
-    const waitAttempt = (label, setup, cleanup, timeoutMs = 60000) => new Promise(resolve => {
-      let done = false;
-      let timer = null;
-      const finish = (result) => {
-        if (done) return;
-        done = true;
-        if (timer) clearTimeout(timer);
-        cleanup?.();
-        resolve(result);
-      };
-      const onPlaying = () => {
-        setTimeout(() => {
-          const hasVideo = videoElement.videoWidth > 0 && videoElement.videoHeight > 0;
-          const hasTime = Number.isFinite(videoElement.currentTime) && videoElement.currentTime > 0;
-          finish({ ok: hasVideo, audioOnly: !hasVideo && hasTime, label });
-        }, 700);
-      };
-      const onError = () => finish({ ok:false, label, reason:'video.error' });
-      videoElement.addEventListener('playing', onPlaying, { once:true });
-      videoElement.addEventListener('error', onError, { once:true });
-      timer = setTimeout(() => {
-        const hasVideo = videoElement.videoWidth > 0 && videoElement.videoHeight > 0;
-        const hasTime = Number.isFinite(videoElement.currentTime) && videoElement.currentTime > 0;
-        finish({ ok:hasVideo, audioOnly:!hasVideo && hasTime, label, reason:hasTime ? 'audio_sin_video' : 'timeout' });
-      }, timeoutMs);
-      setup();
-    });
+    const url = channel.url;
+    const logLines = [];
+    const startedAt = performance.now();
+    let hlsDiag = null;
+    let timer = null;
+    let watch = null;
+    let finished = false;
 
-    const resetVideo = () => {
+    const visibleLog = (msg) => {
+      const t = ((performance.now() - startedAt) / 1000).toFixed(2);
+      const line = `[${t}s] ${msg}`;
+      logLines.push(line);
+      statusCallback(line);
+      if (window.setHlsDiagnosticOutput) window.setHlsDiagnosticOutput(line);
+    };
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      if (watch) clearInterval(watch);
+      ['loadedmetadata','loadeddata','canplay','canplaythrough','playing','waiting','stalled','progress','timeupdate','pause','ended','error','resize'].forEach(ev => {
+        videoElement.removeEventListener(ev, mediaLog);
+      });
+      try { if (hlsDiag && !hlsDiag.destroyed) hlsDiag.destroy(); } catch {}
+      hlsDiag = null;
+    };
+
+    const finish = (reason, ok=false) => {
+      if (finished) return;
+      finished = true;
+      const finalTime = Number(videoElement.currentTime || 0).toFixed(3);
+      visibleLog(`FIN — ok=${ok} motivo=${reason} tiempo=${finalTime}s tamaño=${videoElement.videoWidth}x${videoElement.videoHeight} ready=${videoElement.readyState}`);
+      cleanup();
       try { videoElement.pause(); } catch {}
+      if (!ok) errorCallback('Diagnóstico terminado: ' + reason);
+    };
+
+    const mediaLog = (ev) => {
+      const err = videoElement.error ? ` error=${videoElement.error.code}:${videoElement.error.message || ''}` : '';
+      visibleLog(`VIDEO ${ev} t=${Number(videoElement.currentTime||0).toFixed(3)} size=${videoElement.videoWidth}x${videoElement.videoHeight} ready=${videoElement.readyState} buffered=${videoElement.buffered.length}${err}`);
+    };
+
+    if (window.showHlsDiagnosticLog) window.showHlsDiagnosticLog();
+    if (window.setHlsDiagnosticOutput) window.setHlsDiagnosticOutput('=== INICIO: URL ORIGINAL + HLS.JS / 60 SEGUNDOS ===');
+
+    if (!(window.Hls && Hls.isSupported())) {
+      visibleLog('❌ HLS.js no está disponible o no es compatible en este navegador.');
+      finish('HLS.js no disponible');
+      return Promise.resolve({ok:false, reason:'HLS.js no disponible'});
+    }
+
+    try {
+      videoElement.pause();
       videoElement.removeAttribute('src');
       videoElement.load();
-      destroyHls();
-    };
+    } catch {}
 
-    const nativeAttempt = async (label, url) => waitAttempt(label, () => {
-      statusCallback('🧪 ' + label + ': probando…');
-      videoElement.src = url;
-      videoElement.load();
-      videoElement.play().catch(() => {});
-    }, resetVideo);
+    hlsDiag = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+      backBufferLength: 15,
+      capLevelToPlayerSize: false,
+      startFragPrefetch: false,
+      manifestLoadingMaxRetry: 2,
+      levelLoadingMaxRetry: 2,
+      fragLoadingMaxRetry: 2,
+      fragLoadingRetryDelay: 1000
+    });
 
-    const hlsAttempt = async (label, url) => {
-      if (!(window.Hls && Hls.isSupported())) return { ok:false, label, reason:'HLS.js no disponible' };
-      return waitAttempt(label, () => {
-        statusCallback('🧪 ' + label + ': HLS.js…');
-        hls = new Hls({
-          enableWorker:true,
-          lowLatencyMode:false,
-          maxBufferLength:12,
-          maxMaxBufferLength:24,
-          backBufferLength:8,
-          manifestLoadingMaxRetry:1,
-          levelLoadingMaxRetry:1,
-          fragLoadingMaxRetry:1,
-          fragLoadingRetryDelay:500
-        });
-        hls.on(Hls.Events.MANIFEST_PARSED, () => videoElement.play().catch(() => {}));
-        hls.on(Hls.Events.ERROR, (_, data) => {
-          if (data?.fatal) finishDiagnosticHls(data);
-        });
-        hls.attachMedia(videoElement);
-        hls.loadSource(url);
-        function finishDiagnosticHls(data) {
-          // El evento se recoge por el timeout/error del vídeo; aquí solo aceleramos
-          // el diagnóstico sin lanzar excepciones al reproductor principal.
-          if (data?.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            try { hls.recoverMediaError(); } catch {}
-          }
+    hlsDiag.on(Hls.Events.MEDIA_ATTACHED, () => {
+      visibleLog('MEDIA_ATTACHED');
+      visibleLog('LOAD_SOURCE ' + url);
+      hlsDiag.loadSource(url);
+    });
+    hlsDiag.on(Hls.Events.MANIFEST_LOADING, (_,d)=>visibleLog('MANIFEST_LOADING ' + (d?.url || '')));
+    hlsDiag.on(Hls.Events.MANIFEST_LOADED, (_,d)=>visibleLog('MANIFEST_LOADED'));
+    hlsDiag.on(Hls.Events.MANIFEST_PARSED, (_,d)=>{
+      visibleLog(`MANIFEST_PARSED niveles=${(d?.levels||[]).length}`);
+      videoElement.play().then(()=>visibleLog('PLAY iniciado')).catch(e=>visibleLog('PLAY rechazado: '+(e?.name||e?.message||e)));
+    });
+    hlsDiag.on(Hls.Events.LEVEL_LOADING, (_,d)=>visibleLog(`LEVEL_LOADING level=${d?.level}`));
+    hlsDiag.on(Hls.Events.LEVEL_LOADED, (_,d)=>visibleLog(`LEVEL_LOADED level=${d?.level} details=${d?.details?'OK':'sin details'}`));
+    hlsDiag.on(Hls.Events.FRAG_LOADING, (_,d)=>visibleLog(`FRAG_LOADING sn=${d?.frag?.sn} type=${d?.frag?.type||''}`));
+    hlsDiag.on(Hls.Events.FRAG_LOADED, (_,d)=>visibleLog(`FRAG_LOADED sn=${d?.frag?.sn} bytes=${d?.stats?.loaded||'?'} type=${d?.frag?.type||''}`));
+    hlsDiag.on(Hls.Events.FRAG_LOAD_EMERGENCY_ABORTED, (_,d)=>visibleLog(`FRAG_LOAD_EMERGENCY_ABORTED sn=${d?.frag?.sn}`));
+    hlsDiag.on(Hls.Events.BUFFER_APPENDING, (_,d)=>visibleLog(`BUFFER_APPENDING type=${d?.type||''} bytes=${d?.data?.byteLength||'?'}`));
+    hlsDiag.on(Hls.Events.BUFFER_APPENDED, (_,d)=>visibleLog(`BUFFER_APPENDED type=${d?.type||''} ranges=${videoElement.buffered.length}`));
+    hlsDiag.on(Hls.Events.BUFFER_EOS, ()=>visibleLog('BUFFER_EOS'));
+    hlsDiag.on(Hls.Events.ERROR, (_,d)=>{
+      visibleLog(`HLS ERROR type=${d?.type||'?'} detail=${d?.details||'sin detalle'} fatal=${!!d?.fatal} response=${d?.response?.code||'?'}`);
+      if (d?.fatal && d?.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        try { hlsDiag.recoverMediaError(); visibleLog('recoverMediaError ejecutado'); } catch(e) { visibleLog('recoverMediaError falló: '+(e?.message||e)); }
+      }
+    });
+
+    ['loadedmetadata','loadeddata','canplay','canplaythrough','playing','waiting','stalled','progress','timeupdate','pause','ended','error','resize'].forEach(ev => videoElement.addEventListener(ev, mediaLog));
+
+    watch = setInterval(()=>{
+      if (finished) return;
+      visibleLog(`WATCH t=${Number(videoElement.currentTime||0).toFixed(3)} paused=${videoElement.paused} ready=${videoElement.readyState} size=${videoElement.videoWidth}x${videoElement.videoHeight} buffered=${videoElement.buffered.length}`);
+    }, 5000);
+
+    timer = setTimeout(()=>finish('60 segundos completados', true), 60000);
+    hlsDiag.attachMedia(videoElement);
+
+    return new Promise(resolve => {
+      const originalFinish = finish;
+      // Resolve when cleanup occurs at the 60s timeout or an unrecoverable exception.
+      const check = setInterval(()=>{
+        if (finished) {
+          clearInterval(check);
+          resolve({ok:true, reason:'diagnóstico completado', log:logLines.join('\n')});
         }
-      }, resetVideo);
-    };
-
-    return (async () => {
-      statusCallback('🧪 Diagnóstico: probando URL original…');
-      let r = await nativeAttempt('Original · nativo', originalUrl);
-      if (r.ok) return { ...r, winner:'original-nativo' };
-
-      statusCallback('🧪 Original no reproduce vídeo. Probando Termux…');
-      let termuxAvailable = false;
-      try {
-        const resp = await fetchWithTimeout('http://127.0.0.1:8765/health', 900);
-        termuxAvailable = !!resp;
-      } catch {}
-      if (termuxAvailable) {
-        r = await nativeAttempt('Termux /stream · nativo', termuxUrl);
-        if (r.ok) return { ...r, winner:'termux-nativo' };
-      } else {
-        statusCallback('🧪 Termux no responde en 127.0.0.1:8765');
-      }
-
-      statusCallback('🧪 Probando HLS.js con la URL original…');
-      r = await hlsAttempt('Original · HLS.js', originalUrl);
-      if (r.ok) return { ...r, winner:'original-hls' };
-
-      if (termuxAvailable) {
-        statusCallback('🧪 Probando HLS.js mediante Termux…');
-        r = await hlsAttempt('Termux /stream · HLS.js', termuxUrl);
-        if (r.ok) return { ...r, winner:'termux-hls' };
-      }
-
-      resetVideo();
-      const reason = termuxAvailable ? 'Ninguna de las rutas produjo imagen.' : 'URL original y HLS.js no produjeron imagen; Termux no respondió.';
-      errorCallback(reason);
-      return { ok:false, reason, termuxAvailable };
-    })();
+      }, 100);
+    });
   }
 
   function getCurrentChannel() { return currentChannel; }
@@ -2592,7 +2600,7 @@ window.DulcineaHls60Diagnostic = {
 
 
 <style>
-#hlsDiagPanel{position:fixed;inset:8% 4%;z-index:99999;background:#101318;color:#e8edf2;border:1px solid #3a4654;border-radius:14px;padding:14px;display:none;box-shadow:0 20px 60px #000b;font:13px/1.35 monospace}
+#hlsDiagPanel{position:fixed;inset:3% 3%;z-index:99999;background:#101318;color:#e8edf2;border:1px solid #3a4654;border-radius:14px;padding:14px;display:none;box-shadow:0 20px 60px #000b;font:12px/1.35 monospace}
 #hlsDiagPanel.show{display:flex;flex-direction:column}
 #hlsDiagLog{flex:1;overflow:auto;white-space:pre-wrap;background:#080b0f;border-radius:10px;padding:10px;margin:10px 0}
 #hlsDiagBtns{display:flex;gap:8px;flex-wrap:wrap}
@@ -2603,7 +2611,7 @@ window.DulcineaHls60Diagnostic = {
     <strong>🧪 Diagnóstico HLS — registro</strong>
     <button id="hlsDiagClose">✕</button>
   </div>
-  <div id="hlsDiagStatus">Preparado.</div>
+  <div id="hlsDiagStatus">La prueba permanecerá en URL original + HLS.js durante 60 segundos.</div>
   <pre id="hlsDiagLog"></pre>
   <div id="hlsDiagBtns">
     <button id="hlsDiagCopy">📋 Copiar registro</button>
