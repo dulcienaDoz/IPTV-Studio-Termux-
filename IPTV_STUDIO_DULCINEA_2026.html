@@ -530,7 +530,6 @@ ul { list-style: none; }
       <button class="player-option" id="optMute" type="button">🔊&nbsp; Silenciar</button>
       <button class="player-option" id="optPip" type="button">🪟&nbsp; Ventana flotante</button>
       <button class="player-option" id="optReload" type="button">↻&nbsp; Recargar reproducción</button>
-      <button class="player-option" id="optDiagnose" type="button">🧪&nbsp; Diagnosticar reproducción</button>
       <button class="player-option danger" id="optClose" type="button">✕&nbsp; Cerrar reproductor</button>
     </div>
   </div>
@@ -1003,130 +1002,9 @@ const PlayerService = (() => {
     if (abortController) { abortController.abort(); abortController = null; }
   }
 
-  function diagnose(channel, videoElement, statusCallback, errorCallback) {
-    if (!channel || !videoElement) return Promise.resolve({ok:false, reason:'No hay canal seleccionado.'});
-
-    const url = channel.url;
-    const logLines = [];
-    const startedAt = performance.now();
-    let hlsDiag = null;
-    let timer = null;
-    let watch = null;
-    let finished = false;
-
-    const visibleLog = (msg) => {
-      const t = ((performance.now() - startedAt) / 1000).toFixed(2);
-      const line = `[${t}s] ${msg}`;
-      logLines.push(line);
-      statusCallback(line);
-      if (window.setHlsDiagnosticOutput) window.setHlsDiagnosticOutput(line);
-    };
-
-    const cleanup = () => {
-      if (timer) clearTimeout(timer);
-      if (watch) clearInterval(watch);
-      ['loadedmetadata','loadeddata','canplay','canplaythrough','playing','waiting','stalled','progress','timeupdate','pause','ended','error','resize'].forEach(ev => {
-        videoElement.removeEventListener(ev, mediaLog);
-      });
-      try { if (hlsDiag && !hlsDiag.destroyed) hlsDiag.destroy(); } catch {}
-      hlsDiag = null;
-    };
-
-    const finish = (reason, ok=false) => {
-      if (finished) return;
-      finished = true;
-      const finalTime = Number(videoElement.currentTime || 0).toFixed(3);
-      visibleLog(`FIN — ok=${ok} motivo=${reason} tiempo=${finalTime}s tamaño=${videoElement.videoWidth}x${videoElement.videoHeight} ready=${videoElement.readyState}`);
-      cleanup();
-      try { videoElement.pause(); } catch {}
-      if (!ok) errorCallback('Diagnóstico terminado: ' + reason);
-    };
-
-    const mediaLog = (ev) => {
-      const err = videoElement.error ? ` error=${videoElement.error.code}:${videoElement.error.message || ''}` : '';
-      visibleLog(`VIDEO ${ev} t=${Number(videoElement.currentTime||0).toFixed(3)} size=${videoElement.videoWidth}x${videoElement.videoHeight} ready=${videoElement.readyState} buffered=${videoElement.buffered.length}${err}`);
-    };
-
-    if (window.showHlsDiagnosticLog) window.showHlsDiagnosticLog();
-    if (window.setHlsDiagnosticOutput) window.setHlsDiagnosticOutput('=== INICIO: URL ORIGINAL + HLS.JS / 60 SEGUNDOS ===');
-
-    if (!(window.Hls && Hls.isSupported())) {
-      visibleLog('❌ HLS.js no está disponible o no es compatible en este navegador.');
-      finish('HLS.js no disponible');
-      return Promise.resolve({ok:false, reason:'HLS.js no disponible'});
-    }
-
-    try {
-      videoElement.pause();
-      videoElement.removeAttribute('src');
-      videoElement.load();
-    } catch {}
-
-    hlsDiag = new Hls({
-      enableWorker: true,
-      lowLatencyMode: false,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
-      backBufferLength: 15,
-      capLevelToPlayerSize: false,
-      startFragPrefetch: false,
-      manifestLoadingMaxRetry: 2,
-      levelLoadingMaxRetry: 2,
-      fragLoadingMaxRetry: 2,
-      fragLoadingRetryDelay: 1000
-    });
-
-    hlsDiag.on(Hls.Events.MEDIA_ATTACHED, () => {
-      visibleLog('MEDIA_ATTACHED');
-      visibleLog('LOAD_SOURCE ' + url);
-      hlsDiag.loadSource(url);
-    });
-    hlsDiag.on(Hls.Events.MANIFEST_LOADING, (_,d)=>visibleLog('MANIFEST_LOADING ' + (d?.url || '')));
-    hlsDiag.on(Hls.Events.MANIFEST_LOADED, (_,d)=>visibleLog('MANIFEST_LOADED'));
-    hlsDiag.on(Hls.Events.MANIFEST_PARSED, (_,d)=>{
-      visibleLog(`MANIFEST_PARSED niveles=${(d?.levels||[]).length}`);
-      videoElement.play().then(()=>visibleLog('PLAY iniciado')).catch(e=>visibleLog('PLAY rechazado: '+(e?.name||e?.message||e)));
-    });
-    hlsDiag.on(Hls.Events.LEVEL_LOADING, (_,d)=>visibleLog(`LEVEL_LOADING level=${d?.level}`));
-    hlsDiag.on(Hls.Events.LEVEL_LOADED, (_,d)=>visibleLog(`LEVEL_LOADED level=${d?.level} details=${d?.details?'OK':'sin details'}`));
-    hlsDiag.on(Hls.Events.FRAG_LOADING, (_,d)=>visibleLog(`FRAG_LOADING sn=${d?.frag?.sn} type=${d?.frag?.type||''}`));
-    hlsDiag.on(Hls.Events.FRAG_LOADED, (_,d)=>visibleLog(`FRAG_LOADED sn=${d?.frag?.sn} bytes=${d?.stats?.loaded||'?'} type=${d?.frag?.type||''}`));
-    hlsDiag.on(Hls.Events.FRAG_LOAD_EMERGENCY_ABORTED, (_,d)=>visibleLog(`FRAG_LOAD_EMERGENCY_ABORTED sn=${d?.frag?.sn}`));
-    hlsDiag.on(Hls.Events.BUFFER_APPENDING, (_,d)=>visibleLog(`BUFFER_APPENDING type=${d?.type||''} bytes=${d?.data?.byteLength||'?'}`));
-    hlsDiag.on(Hls.Events.BUFFER_APPENDED, (_,d)=>visibleLog(`BUFFER_APPENDED type=${d?.type||''} ranges=${videoElement.buffered.length}`));
-    hlsDiag.on(Hls.Events.BUFFER_EOS, ()=>visibleLog('BUFFER_EOS'));
-    hlsDiag.on(Hls.Events.ERROR, (_,d)=>{
-      visibleLog(`HLS ERROR type=${d?.type||'?'} detail=${d?.details||'sin detalle'} fatal=${!!d?.fatal} response=${d?.response?.code||'?'}`);
-      if (d?.fatal && d?.type === Hls.ErrorTypes.MEDIA_ERROR) {
-        try { hlsDiag.recoverMediaError(); visibleLog('recoverMediaError ejecutado'); } catch(e) { visibleLog('recoverMediaError falló: '+(e?.message||e)); }
-      }
-    });
-
-    ['loadedmetadata','loadeddata','canplay','canplaythrough','playing','waiting','stalled','progress','timeupdate','pause','ended','error','resize'].forEach(ev => videoElement.addEventListener(ev, mediaLog));
-
-    watch = setInterval(()=>{
-      if (finished) return;
-      visibleLog(`WATCH t=${Number(videoElement.currentTime||0).toFixed(3)} paused=${videoElement.paused} ready=${videoElement.readyState} size=${videoElement.videoWidth}x${videoElement.videoHeight} buffered=${videoElement.buffered.length}`);
-    }, 5000);
-
-    timer = setTimeout(()=>finish('60 segundos completados', true), 60000);
-    hlsDiag.attachMedia(videoElement);
-
-    return new Promise(resolve => {
-      const originalFinish = finish;
-      // Resolve when cleanup occurs at the 60s timeout or an unrecoverable exception.
-      const check = setInterval(()=>{
-        if (finished) {
-          clearInterval(check);
-          resolve({ok:true, reason:'diagnóstico completado', log:logLines.join('\n')});
-        }
-      }, 100);
-    });
-  }
-
   function getCurrentChannel() { return currentChannel; }
 
-  return { play, stop, diagnose, getCurrentChannel, isHlsUrl, _getHls: () => hls };
+  return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -1765,9 +1643,6 @@ const App = (() => {
       document.exitFullscreen().catch(() => {});
     }
     unlockOrientation();
-    if (document.pictureInPictureElement && document.exitPictureInPicture) {
-      document.exitPictureInPicture().catch(() => {});
-    }
     PlayerService.stop(vid);
     $('#playerFs').classList.remove('open');
     document.body.style.overflow = '';
@@ -1968,22 +1843,9 @@ const App = (() => {
     $('#playerFs').addEventListener('touchstart', () => showPlayerUI(true), { passive:true });
     $('#optFullscreen').addEventListener('click', () => togglePlayerFullscreen());
     $('#optMute').addEventListener('click', () => { const v=$('#mainVid'); v.muted=!v.muted; $('#optMute').innerHTML = v.muted ? '🔇&nbsp; Activar sonido' : '🔊&nbsp; Silenciar'; closePlayerOptions(); });
-    $('#optPip').addEventListener('click', enterPiP);
+    $('#optPip').style.display = 'none';
+    $('#optPip').disabled = true;
     $('#optReload').addEventListener('click', reloadCurrentPlayer);
-    $('#optDiagnose').addEventListener('click', async () => {
-      closePlayerOptions();
-      const c = PlayerService.getCurrentChannel();
-      if (!c) { toast('No hay un canal reproduciéndose.', 'warning'); return; }
-      await PlayerService.diagnose(c, $('#mainVid'), (msg, type) => {
-        const el = $('#playerStatus');
-        el.textContent = msg;
-        el.className = 'player-status' + (type ? ' ' + type : '');
-      }, (msg) => {
-        $('#playerStatus').textContent = '❌ ' + msg;
-        $('#playerStatus').className = 'player-status err';
-        toast(msg, 'error');
-      });
-    });
     $('#optClose').addEventListener('click', stopPlayer);
     document.addEventListener('fullscreenchange', () => {
       const fs = !!document.fullscreenElement;
@@ -2253,42 +2115,10 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
       $('#topNav').classList.toggle('solid', window.scrollY > 20);
     });
 
+    // PRUEBA DIAGNÓSTICA: PiP y recuperación por visibilitychange desactivados.
+    // Esto permite aislar si el corte de reproducción viene de esa lógica.
     let pipWasActive = false;
     let pipWasPlaying = false;
-
-    document.addEventListener('visibilitychange', () => {
-      const vid = $('#mainVid');
-      const shell = $('#playerFs');
-      if (!vid || !shell || !shell.classList.contains('open')) return;
-      if (document.visibilityState === 'visible') {
-        try {
-          const h = PlayerService._getHls?.();
-          if (h && !h.destroyed) {
-            h.startLoad(-1);
-            if (vid.readyState < 3) h.recoverMediaError?.();
-          }
-        } catch {}
-        if (pipWasActive && pipWasPlaying && vid.paused) {
-          vid.play().catch(() => {});
-        }
-      }
-    });
-
-    $('#mainVid').addEventListener('enterpictureinpicture', () => {
-      pipWasActive = true;
-      // Guardamos el estado justo al entrar. No lo modificamos ante un pause
-      // posterior, porque Android/Chrome puede pausar el vídeo temporalmente
-      // mientras la ventana flotante sigue activa.
-      pipWasPlaying = !$('#mainVid').paused;
-    });
-    $('#mainVid').addEventListener('leavepictureinpicture', () => {
-      const shouldResume = pipWasActive && pipWasPlaying;
-      pipWasActive = false;
-      if (shouldResume && $('#mainVid').paused) {
-        $('#mainVid').play().catch(() => {});
-      }
-      pipWasPlaying = false;
-    });
 
     $$('.nav-links a').forEach(a => {
       a.addEventListener('click', (e) => {
@@ -2472,187 +2302,5 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
 document.addEventListener('DOMContentLoaded', () => App.init());
 window.App = App;
 </script>
-
-<script>
-/* ==========================================================
-   DIAGNÓSTICO HLS 60s — NO CAMBIA AUTOMÁTICAMENTE DE RUTA
-   Solo para identificar qué ocurre después del primer segundo.
-   ========================================================== */
-window.DulcineaHls60Diagnostic = {
-  durationMs: 60000,
-  events: [],
-  stats: { fragLoaded: 0, fragErrors: 0, bufferAppended: 0, mediaErrors: 0, networkErrors: 0 },
-  start(url, video, output) {
-    const D = this;
-    if (window.showHlsDiagnosticLog) window.showHlsDiagnosticLog();
-    D.events = [];
-    D.stats = { fragLoaded: 0, fragErrors: 0, bufferAppended: 0, mediaErrors: 0, networkErrors: 0 };
-    if (!window.Hls || !Hls.isSupported()) {
-      output('❌ HLS.js no está disponible en este navegador.');
-      return;
-    }
-
-    let hls = null;
-    let stopped = false;
-    const startedAt = performance.now();
-    const log = (msg) => {
-      const t = ((performance.now() - startedAt) / 1000).toFixed(2);
-      const line = `[${t}s] ${msg}`;
-      D.events.push(line);
-      output(line);
-      if (window.setHlsDiagnosticOutput) window.setHlsDiagnosticOutput(line);
-    };
-
-    const cleanup = () => {
-      if (stopped) return;
-      stopped = true;
-      try { if (hls && !hls.destroyed) hls.destroy(); } catch {}
-      try { video.pause(); } catch {}
-      log(`FIN — segmentos: ${D.stats.fragLoaded}, errores de segmento: ${D.stats.fragErrors}, buffer: ${D.stats.bufferAppended}, errores media: ${D.stats.mediaErrors}, errores red: ${D.stats.networkErrors}`);
-    };
-
-    video.pause();
-    video.removeAttribute('src');
-    video.load();
-
-    hls = new Hls({
-      enableWorker: true,
-      lowLatencyMode: false,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
-      backBufferLength: 15,
-      capLevelToPlayerSize: false,
-      startFragPrefetch: false,
-      manifestLoadingMaxRetry: 2,
-      levelLoadingMaxRetry: 2,
-      fragLoadingMaxRetry: 2,
-      fragLoadingRetryDelay: 1000
-    });
-
-    hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-      log('MEDIA_ATTACHED');
-      hls.loadSource(url);
-    });
-
-    hls.on(Hls.Events.MANIFEST_LOADING, (_, d) => log('MANIFEST_LOADING ' + (d?.url || '')));
-    hls.on(Hls.Events.MANIFEST_LOADED, (_, d) => log('MANIFEST_LOADED'));
-    hls.on(Hls.Events.MANIFEST_PARSED, (_, d) => {
-      log(`MANIFEST_PARSED — niveles: ${(d?.levels || []).length}`);
-      video.play().then(() => log('PLAY iniciado')).catch(e => log('PLAY rechazado: ' + (e?.name || e?.message || e)));
-    });
-
-    hls.on(Hls.Events.LEVEL_LOADING, (_, d) => log(`LEVEL_LOADING level=${d?.level} id=${d?.id}`));
-    hls.on(Hls.Events.LEVEL_LOADED, (_, d) => log(`LEVEL_LOADED level=${d?.level} details=${d?.details ? 'OK' : 'sin details'}`));
-
-    hls.on(Hls.Events.FRAG_LOADING, (_, d) => log(`FRAG_LOADING sn=${d?.frag?.sn} type=${d?.frag?.type || ''}`));
-    hls.on(Hls.Events.FRAG_LOADED, (_, d) => {
-      D.stats.fragLoaded++;
-      log(`FRAG_LOADED sn=${d?.frag?.sn} bytes=${d?.stats?.loaded || '?'} type=${d?.frag?.type || ''}`);
-    });
-    hls.on(Hls.Events.FRAG_LOAD_EMERGENCY_ABORTED, (_, d) => log(`FRAG_LOAD_EMERGENCY_ABORTED sn=${d?.frag?.sn}`));
-
-    hls.on(Hls.Events.BUFFER_APPENDING, (_, d) => log(`BUFFER_APPENDING type=${d?.type || ''} bytes=${d?.data?.byteLength || '?'}`));
-    hls.on(Hls.Events.BUFFER_APPENDED, (_, d) => {
-      D.stats.bufferAppended++;
-      log(`BUFFER_APPENDED type=${d?.type || ''} timeRanges=${video.buffered.length}`);
-    });
-    hls.on(Hls.Events.BUFFER_EOS, () => log('BUFFER_EOS'));
-
-    hls.on(Hls.Events.ERROR, (_, d) => {
-      const detail = d?.details || 'sin detalle';
-      if (d?.type === Hls.ErrorTypes.NETWORK_ERROR) D.stats.networkErrors++;
-      if (d?.type === Hls.ErrorTypes.MEDIA_ERROR) D.stats.mediaErrors++;
-      if (d?.details && /FRAG.*ERROR|LOAD_ERROR/i.test(d.details)) D.stats.fragErrors++;
-      log(`HLS ERROR type=${d?.type || '?'} detail=${detail} fatal=${!!d?.fatal} response=${d?.response?.code || '?'}`);
-
-      // Importante: NO cambia a Termux ni a otra ruta.
-      if (d?.fatal) log('ERROR FATAL — se mantiene únicamente esta prueba HLS.');
-    });
-
-    ['loadedmetadata','loadeddata','canplay','playing','waiting','stalled','progress','timeupdate','pause','ended','error','resize'].forEach(ev => {
-      video.addEventListener(ev, () => {
-        const err = video.error ? ` mediaError=${video.error.code}:${video.error.message || ''}` : '';
-        log(`VIDEO ${ev} t=${video.currentTime.toFixed(3)} size=${video.videoWidth}x${video.videoHeight} ready=${video.readyState} buffered=${video.buffered.length}${err}`);
-      });
-    });
-
-    const timer = setTimeout(() => {
-      clearInterval(watch);
-      log(`60s completados. Último tiempo=${video.currentTime.toFixed(3)} size=${video.videoWidth}x${video.videoHeight} paused=${video.paused} ready=${video.readyState}`);
-      cleanup();
-    }, D.durationMs);
-
-    const watch = setInterval(() => {
-      if (stopped) { clearInterval(watch); return; }
-      log(`WATCH t=${video.currentTime.toFixed(3)} paused=${video.paused} ready=${video.readyState} size=${video.videoWidth}x${video.videoHeight} buffered=${video.buffered.length}`);
-    }, 5000);
-
-    hls.attachMedia(video);
-
-    return () => {
-      clearTimeout(timer);
-      clearInterval(watch);
-      cleanup();
-    };
-  }
-};
-</script>
-
-
-<style>
-#hlsDiagPanel{position:fixed;inset:3% 3%;z-index:99999;background:#101318;color:#e8edf2;border:1px solid #3a4654;border-radius:14px;padding:14px;display:none;box-shadow:0 20px 60px #000b;font:12px/1.35 monospace}
-#hlsDiagPanel.show{display:flex;flex-direction:column}
-#hlsDiagLog{flex:1;overflow:auto;white-space:pre-wrap;background:#080b0f;border-radius:10px;padding:10px;margin:10px 0}
-#hlsDiagBtns{display:flex;gap:8px;flex-wrap:wrap}
-#hlsDiagBtns button{padding:9px 12px;border:0;border-radius:9px}
-</style>
-<div id="hlsDiagPanel">
-  <div style="display:flex;justify-content:space-between;align-items:center">
-    <strong>🧪 Diagnóstico HLS — registro</strong>
-    <button id="hlsDiagClose">✕</button>
-  </div>
-  <div id="hlsDiagStatus">La prueba permanecerá en URL original + HLS.js durante 60 segundos.</div>
-  <pre id="hlsDiagLog"></pre>
-  <div id="hlsDiagBtns">
-    <button id="hlsDiagCopy">📋 Copiar registro</button>
-    <button id="hlsDiagSave">💾 Guardar TXT</button>
-    <button id="hlsDiagClear">🗑️ Limpiar</button>
-  </div>
-</div>
-<script>
-(function(){
-  const panel=document.getElementById('hlsDiagPanel');
-  const logEl=document.getElementById('hlsDiagLog');
-  const statusEl=document.getElementById('hlsDiagStatus');
-  window.showHlsDiagnosticLog=function(){
-    panel.classList.add('show');
-  };
-  window.setHlsDiagnosticOutput=function(line){
-    showHlsDiagnosticLog();
-    logEl.textContent += (logEl.textContent ? '\\n' : '') + line;
-    logEl.scrollTop=logEl.scrollHeight;
-    statusEl.textContent='Registro activo';
-  };
-  document.getElementById('hlsDiagClose').onclick=()=>panel.classList.remove('show');
-  document.getElementById('hlsDiagClear').onclick=()=>{logEl.textContent='';statusEl.textContent='Registro limpiado';};
-  document.getElementById('hlsDiagCopy').onclick=async()=>{
-    try{
-      await navigator.clipboard.writeText(logEl.textContent);
-      statusEl.textContent='✅ Registro copiado';
-    }catch{
-      statusEl.textContent='⚠️ No se pudo copiar automáticamente';
-    }
-  };
-  document.getElementById('hlsDiagSave').onclick=()=>{
-    const blob=new Blob([logEl.textContent],{type:'text/plain;charset=utf-8'});
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
-    a.download='diagnostico-hls.txt';
-    a.click();
-    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  };
-})();
-</script>
-
 </body>
 </html>
