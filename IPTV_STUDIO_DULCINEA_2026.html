@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -862,6 +863,8 @@ const PlayerService = (() => {
     const isExplicitHls = isHlsUrl(url);
     let playUrl = url;
 
+    // PRUEBA: volver a activar Termux /stream, manteniendo la configuración
+    // HLS corregida que acaba de demostrar reproducción estable.
     try {
       const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 500);
       if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
@@ -945,6 +948,39 @@ const PlayerService = (() => {
           videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
         }
 
+        // Detecta el caso concreto: el audio avanza pero no aparecen cuadros
+        // de vídeo. No usamos loadedmetadata para cancelar el diagnóstico porque
+        // ese evento también puede ocurrir cuando solo existe una pista de audio.
+        let watchdogDone = false;
+        let videoWatchdog = null;
+        const clearVideoWatchdog = () => {
+          if (watchdogDone) return;
+          watchdogDone = true;
+          if (videoWatchdog) {
+            clearInterval(videoWatchdog);
+            videoWatchdog = null;
+          }
+        };
+        const checkVideoTrack = () => {
+          if (watchdogDone || !videoElement) return;
+          if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+            clearVideoWatchdog();
+            return;
+          }
+          if (!hls || hls.destroyed) return;
+          if (!videoElement.paused && videoElement.currentTime > 0) {
+            statusCallback('Audio detectado; recuperando vídeo...', 'err');
+            try {
+              hls.recoverMediaError();
+              hls.startLoad(-1);
+            } catch {}
+          }
+        };
+        videoElement.addEventListener('loadeddata', checkVideoTrack);
+        videoElement.addEventListener('playing', checkVideoTrack);
+        videoElement.addEventListener('resize', checkVideoTrack);
+        videoWatchdog = setInterval(checkVideoTrack, 2500);
+        setTimeout(clearVideoWatchdog, 12000);
         hls.attachMedia(videoElement);
       } else {
         statusCallback('Abriendo vídeo...');
