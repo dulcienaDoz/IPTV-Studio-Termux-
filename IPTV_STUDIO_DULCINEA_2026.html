@@ -528,7 +528,6 @@ ul { list-style: none; }
     <div class="player-options" id="playerOptionsMenu" role="menu" aria-label="Opciones del reproductor">
       <button class="player-option" id="optFullscreen" type="button">⛶&nbsp; Pantalla completa</button>
       <button class="player-option" id="optMute" type="button">🔊&nbsp; Silenciar</button>
-      <button class="player-option" id="optPip" type="button">🪟&nbsp; Ventana flotante</button>
       <button class="player-option" id="optReload" type="button">↻&nbsp; Recargar reproducción</button>
       <button class="player-option danger" id="optClose" type="button">✕&nbsp; Cerrar reproductor</button>
     </div>
@@ -818,7 +817,7 @@ const PlayerService = (() => {
   let hls = null;
   let currentChannel = null;
   let retryCount = 0;
-  const MAX_RETRIES = 6;
+  const MAX_RETRIES = 2;
   let abortController = null;
 
   function destroyHls() {
@@ -856,26 +855,17 @@ const PlayerService = (() => {
     statusCallback('Preparando...');
 
     const url = channel.url;
-    // Algunas fuentes HLS no terminan en .m3u8 (redirecciones, tokens,
-    // proxys o URLs dinámicas). Por eso la decisión no puede depender
-    // únicamente de la extensión.
-    const isExplicitHls = isHlsUrl(url);
+    const isHls = isHlsUrl(url);
     let playUrl = url;
 
-    // DIAGNÓSTICO: mantener siempre la URL original.
-    // No sustituirla automáticamente por Termux /stream.
-    // Esto permite aislar si el corte de reproducción proviene del proxy local.
+    try {
+      const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 500);
+      if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
+    } catch {}
 
     try {
-      // Preferimos HLS.js para HLS explícito y también hacemos un intento
-      // controlado para URLs de streaming sin extensión .m3u8. Si no son HLS,
-      // el fallback nativo se activa automáticamente. Esto evita el caso en
-      // que Chrome reproduzca solo el audio porque la URL HLS fue detectada
-      // como una fuente de vídeo normal.
-      const canUseHls = window.Hls && Hls.isSupported();
-      const shouldTryHls = canUseHls && (isExplicitHls || /^(https?:)?\/\//i.test(playUrl));
-      if (shouldTryHls) {
-        statusCallback(isExplicitHls ? 'Conectando HLS...' : 'Detectando transmisión...');
+      if (isHls && window.Hls && Hls.isSupported()) {
+        statusCallback('Conectando HLS...');
         hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
@@ -883,11 +873,10 @@ const PlayerService = (() => {
           maxMaxBufferLength: 24,
           backBufferLength: 8,
           capLevelToPlayerSize: true,
-          manifestLoadingMaxRetry: 5,
-          levelLoadingMaxRetry: 5,
-          fragLoadingMaxRetry: 5,
-          fragLoadingRetryDelay: 1000,
-          startFragPrefetch: true,
+          manifestLoadingMaxRetry: 2,
+          levelLoadingMaxRetry: 2,
+          fragLoadingMaxRetry: 2,
+          fragLoadingRetryDelay: 800,
           abrEwmaDefaultEstimate: 1e6,
         });
 
@@ -897,87 +886,23 @@ const PlayerService = (() => {
           videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
         });
         hls.on(Hls.Events.ERROR, (_, data) => {
-          if (!data.fatal) return;
-
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            statusCallback('Error de red. Reintentando...', 'err');
-            if (retryCount < MAX_RETRIES) {
-              retryCount++;
-              setTimeout(() => {
-                if (hls && !hls.destroyed) hls.startLoad(-1);
-              }, Math.min(8000, 1000 * retryCount));
-            } else if (!isExplicitHls) {
-              // Si la URL no parecía HLS, damos una oportunidad al reproductor
-              // nativo; puede ser MP4/TS u otro formato compatible.
-              fallbackToNative();
-            } else {
-              errorCallback('No se pudo conectar después de varios intentos.');
-            }
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            statusCallback('Recuperando vídeo...', 'err');
-            try {
-              if (hls && !hls.destroyed) hls.recoverMediaError();
-            } catch {}
-          } else {
-            if (!isExplicitHls) {
-              fallbackToNative();
-            } else {
-              const detail = String(data.details || '');
-              if (/CODECS|INCOMPATIBLE|BUFFER/i.test(detail)) {
-                errorCallback('El vídeo usa un códec o formato no compatible con este dispositivo.');
+          if (data.fatal) {
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              statusCallback('Error de red. Reintentando...', 'err');
+              if (retryCount < MAX_RETRIES) {
+                retryCount++;
+                setTimeout(() => hls.startLoad(), 1000);
               } else {
-                errorCallback('El formato de vídeo no es compatible o la fuente está dañada.');
+                errorCallback('No se pudo conectar después de varios intentos.');
               }
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              statusCallback('Recuperando vídeo...', 'err');
+              hls.recoverMediaError();
+            } else {
+              errorCallback('Error fatal en la reproducción.');
             }
           }
         });
-
-        function fallbackToNative() {
-          if (hls && !hls.destroyed) hls.destroy();
-          hls = null;
-          retryCount = 0;
-          statusCallback('Probando reproductor nativo...');
-          videoElement.pause();
-          videoElement.removeAttribute('src');
-          videoElement.load();
-          videoElement.src = playUrl;
-          videoElement.load();
-          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
-        }
-
-        // Detecta el caso concreto: el audio avanza pero no aparecen cuadros
-        // de vídeo. No usamos loadedmetadata para cancelar el diagnóstico porque
-        // ese evento también puede ocurrir cuando solo existe una pista de audio.
-        let watchdogDone = false;
-        let videoWatchdog = null;
-        const clearVideoWatchdog = () => {
-          if (watchdogDone) return;
-          watchdogDone = true;
-          if (videoWatchdog) {
-            clearInterval(videoWatchdog);
-            videoWatchdog = null;
-          }
-        };
-        const checkVideoTrack = () => {
-          if (watchdogDone || !videoElement) return;
-          if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
-            clearVideoWatchdog();
-            return;
-          }
-          if (!hls || hls.destroyed) return;
-          if (!videoElement.paused && videoElement.currentTime > 0) {
-            statusCallback('Audio detectado; recuperando vídeo...', 'err');
-            try {
-              hls.recoverMediaError();
-              hls.startLoad(-1);
-            } catch {}
-          }
-        };
-        videoElement.addEventListener('loadeddata', checkVideoTrack);
-        videoElement.addEventListener('playing', checkVideoTrack);
-        videoElement.addEventListener('resize', checkVideoTrack);
-        videoWatchdog = setInterval(checkVideoTrack, 2500);
-        setTimeout(clearVideoWatchdog, 12000);
         hls.attachMedia(videoElement);
       } else {
         statusCallback('Abriendo vídeo...');
@@ -1003,7 +928,7 @@ const PlayerService = (() => {
 
   function getCurrentChannel() { return currentChannel; }
 
-  return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
+  return { play, stop, getCurrentChannel, isHlsUrl };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -1476,20 +1401,6 @@ const App = (() => {
     else showPlayerUI(true);
   }
 
-  function setupMediaSession(channel, videoElement) {
-    if (!('mediaSession' in navigator)) return;
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: channel?.name || 'Dulcinea IPTV',
-        artist: channel?.group || 'IPTV Studio Dulcinea',
-        album: 'Dulcinea IPTV'
-      });
-      navigator.mediaSession.setActionHandler('play', () => videoElement.play().catch(() => {}));
-      navigator.mediaSession.setActionHandler('pause', () => videoElement.pause());
-      try { navigator.mediaSession.setActionHandler('stop', () => videoElement.pause()); } catch {}
-    } catch {}
-  }
-
   // ── Reproducción ──
   async function playChannel(c) {
     curChannel = c;
@@ -1499,7 +1410,6 @@ const App = (() => {
     const statusEl = $('#playerStatus');
     $('#playerName').textContent = c.name;
     $('#playerGrp').textContent = c.group || 'Sin categoría';
-    setupMediaSession(c, vid);
 
     const lb = $('#playerListBtn');
     lb._ch = c;
@@ -1531,36 +1441,21 @@ const App = (() => {
     );
   }
 
-  async function lockLandscape() {
-    try {
-      if (screen.orientation?.lock) await screen.orientation.lock('landscape');
-    } catch {}
-  }
-
-  async function unlockOrientation() {
-    try {
-      if (screen.orientation?.unlock) screen.orientation.unlock();
-    } catch {}
-  }
-
   async function togglePlayerFullscreen() {
     const shell = $('#playerFs');
     const vid = $('#mainVid');
     try {
       if (document.fullscreenElement) {
         if (document.exitFullscreen) await document.exitFullscreen();
-        await unlockOrientation();
         return;
       }
       if (shell.requestFullscreen) {
         await shell.requestFullscreen();
-        await lockLandscape();
         closePlayerOptions();
         return;
       }
       if (vid.requestFullscreen) {
         await vid.requestFullscreen();
-        await lockLandscape();
         closePlayerOptions();
         return;
       }
@@ -1579,32 +1474,6 @@ const App = (() => {
         }
       } catch {}
       toast('No se pudo activar pantalla completa.', 'warning');
-    }
-  }
-
-  async function enterPiP() {
-    const vid = $('#mainVid');
-    if (!vid) return;
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-        closePlayerOptions();
-        return;
-      }
-      if (document.pictureInPictureEnabled && vid.requestPictureInPicture) {
-        await vid.requestPictureInPicture();
-        closePlayerOptions();
-        showPlayerUI(false);
-        return;
-      }
-      if (vid.webkitSetPresentationMode) {
-        vid.webkitSetPresentationMode('picture-in-picture');
-        closePlayerOptions();
-        return;
-      }
-      toast('La ventana flotante no está disponible en este navegador/WebView.', 'warning');
-    } catch (e) {
-      toast('No se pudo activar la ventana flotante. Chrome/Android puede exigir que se pulse el botón directamente.', 'warning');
     }
   }
 
@@ -1640,10 +1509,6 @@ const App = (() => {
     const vid = $('#mainVid');
     if (document.fullscreenElement && document.exitFullscreen) {
       document.exitFullscreen().catch(() => {});
-    }
-    unlockOrientation();
-    if (document.pictureInPictureElement && document.exitPictureInPicture) {
-      document.exitPictureInPicture().catch(() => {});
     }
     PlayerService.stop(vid);
     $('#playerFs').classList.remove('open');
@@ -1845,12 +1710,10 @@ const App = (() => {
     $('#playerFs').addEventListener('touchstart', () => showPlayerUI(true), { passive:true });
     $('#optFullscreen').addEventListener('click', () => togglePlayerFullscreen());
     $('#optMute').addEventListener('click', () => { const v=$('#mainVid'); v.muted=!v.muted; $('#optMute').innerHTML = v.muted ? '🔇&nbsp; Activar sonido' : '🔊&nbsp; Silenciar'; closePlayerOptions(); });
-    $('#optPip').addEventListener('click', enterPiP);
     $('#optReload').addEventListener('click', reloadCurrentPlayer);
     $('#optClose').addEventListener('click', stopPlayer);
     document.addEventListener('fullscreenchange', () => {
       const fs = !!document.fullscreenElement;
-      if (!fs) unlockOrientation();
       $('#playerFullscreenBtn').textContent = fs ? '↙' : '⛶';
       $('#playerFullscreenBtn').title = fs ? 'Salir de pantalla completa' : 'Pantalla completa';
       $('#optFullscreen').innerHTML = fs ? '↙&nbsp; Salir de pantalla completa' : '⛶&nbsp; Pantalla completa';
@@ -2114,43 +1977,6 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
 
     window.addEventListener('scroll', () => {
       $('#topNav').classList.toggle('solid', window.scrollY > 20);
-    });
-
-    let pipWasActive = false;
-    let pipWasPlaying = false;
-
-    document.addEventListener('visibilitychange', () => {
-      const vid = $('#mainVid');
-      const shell = $('#playerFs');
-      if (!vid || !shell || !shell.classList.contains('open')) return;
-      if (document.visibilityState === 'visible') {
-        try {
-          const h = PlayerService._getHls?.();
-          if (h && !h.destroyed) {
-            h.startLoad(-1);
-            if (vid.readyState < 3) h.recoverMediaError?.();
-          }
-        } catch {}
-        if (pipWasActive && pipWasPlaying && vid.paused) {
-          vid.play().catch(() => {});
-        }
-      }
-    });
-
-    $('#mainVid').addEventListener('enterpictureinpicture', () => {
-      pipWasActive = true;
-      // Guardamos el estado justo al entrar. No lo modificamos ante un pause
-      // posterior, porque Android/Chrome puede pausar el vídeo temporalmente
-      // mientras la ventana flotante sigue activa.
-      pipWasPlaying = !$('#mainVid').paused;
-    });
-    $('#mainVid').addEventListener('leavepictureinpicture', () => {
-      const shouldResume = pipWasActive && pipWasPlaying;
-      pipWasActive = false;
-      if (shouldResume && $('#mainVid').paused) {
-        $('#mainVid').play().catch(() => {});
-      }
-      pipWasPlaying = false;
     });
 
     $$('.nav-links a').forEach(a => {
