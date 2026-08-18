@@ -1961,8 +1961,25 @@ const App = (() => {
       };
 
       if (method === 'auto' || method === 'Termux local' || method === 'termux') {
-        const local = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 15000);
-        if (local) return local;
+        // Primero comprobar rápidamente que Termux está disponible.
+        // Si 127.0.0.1:8765 no responde, no se intenta /playlist y se pasa
+        // directamente a la URL pública.
+        try {
+          const health = await fetch('http://127.0.0.1:8765/health', {
+            signal: AbortSignal.timeout(800),
+            cache: 'no-store'
+          });
+          if (health.ok) {
+            const local = await tryFetch(
+              'Termux local',
+              'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl),
+              15000
+            );
+            if (local) return local;
+          }
+        } catch (_) {
+          // Termux no disponible: continuar con la URL directa.
+        }
       }
       if ((method === 'proxy' || proxyUrl) && proxyUrl) {
         const sep = proxyUrl.includes('?') ? '&' : '?';
