@@ -1886,30 +1886,62 @@ const App = (() => {
       } catch (err) { setDStatus('Error: ' + err.message, 'err'); }
     });
 
+    function isXtreamPlaylistUrl(rawUrl) {
+      try {
+        const u = new URL(rawUrl);
+        return /\/get\.php$/i.test(u.pathname) &&
+          u.searchParams.has('username') && u.searchParams.has('password') &&
+          /^(?:m3u|m3u_plus|m3u8)$/i.test(u.searchParams.get('type') || 'm3u_plus');
+      } catch { return false; }
+    }
+
+    function buildPlaylistCandidates(rawUrl) {
+      const out = [rawUrl];
+      if (!isXtreamPlaylistUrl(rawUrl)) return out;
+      try {
+        const u = new URL(rawUrl);
+        // Para navegadores, HLS suele ser más compatible que MPEG-TS cuando
+        // el panel Xtream permite elegir el formato de salida. No sustituimos
+        // la URL original: la probamos primero y dejamos la alternativa después.
+        const hls = new URL(u.href);
+        hls.searchParams.set('output', 'm3u8');
+        if (hls.href !== rawUrl) out.push(hls.href);
+        if (u.protocol === 'http:') {
+          const https = new URL(u.href);
+          https.protocol = 'https:';
+          out.push(https.href);
+          const httpsHls = new URL(hls.href);
+          httpsHls.protocol = 'https:';
+          out.push(httpsHls.href);
+        }
+      } catch {}
+      return [...new Set(out)];
+    }
+
     $('#loadBtn').addEventListener('click', async () => {
       const u = $('#urlInput').value.trim();
       if (!u) { setDStatus('Pega una URL primero.', 'err'); return; }
       try { new URL(u); } catch { setDStatus('URL no válida.', 'err'); return; }
-      setDStatus('Conectando...', 'loading');
+      setDStatus(isXtreamPlaylistUrl(u) ? 'Detectada lista Xtream/M3U…' : 'Conectando...', 'loading');
       showLoadingBar(10);
       try {
         const method = $('#urlMode').value;
         let proxy = '';
         if (method === 'proxy') proxy = $('#proxyInput').value.trim();
-        let urlToFetch = u;
-        if (method === 'proxy' && proxy) {
-          const sep = proxy.includes('?') ? '&' : '?';
-          urlToFetch = proxy + sep + 'url=' + encodeURIComponent(u);
-        } else if (method === 'auto') {
+
+        // 1) Auto: Termux es la ruta preferida para URLs HTTP desde una página HTTPS.
+        // Evita que Chrome/GitHub bloquee el contenido mixto antes de descargar la lista.
+        if (method === 'auto') {
           try {
             const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(300000), cache: 'no-store' });
             if (resp.ok) {
               const text = await resp.text();
               const items = M3UParser.parse(text);
               if (items.length) {
-                currentListMeta = { id: null, name: $('#listNameInput').value.trim() || 'Mi lista IPTV', url: u, method: 'Termux local', proxy: '', updatedAt: Date.now() };
+                currentListMeta = { id: null, name: $('#listNameInput').value.trim() || (isXtreamPlaylistUrl(u) ? 'Lista Xtream' : 'Mi lista IPTV'), url: u, method: 'Termux local', proxy: '', updatedAt: Date.now() };
+                $('#listNameInput').value = currentListMeta.name;
                 setChannels(items);
-                setDStatus(`Cargado (Termux): ${items.length} elementos.`, 'ok');
+                setDStatus(`Cargado (Termux): ${items.length} elementos${isXtreamPlaylistUrl(u) ? ' · Xtream/M3U' : ''}.`, 'ok');
                 setTimeout(closeDrawer, 900);
                 showLoadingBar(100);
                 return;
@@ -1917,21 +1949,49 @@ const App = (() => {
             }
           } catch (e) {}
         }
-        const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(120000), cache: 'no-store' });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const text = await resp.text();
-        const items = M3UParser.parse(text);
-        if (!items.length) throw new Error('No se encontraron entradas M3U válidas.');
-        const autoName = new URL(u).hostname.replace(/^www\./, '');
-        currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || 'Mi lista IPTV', url: u, method: method === 'proxy' ? 'proxy' : 'directo', proxy: method === 'proxy' ? proxy : '', updatedAt: Date.now() };
-        $('#listNameInput').value = currentListMeta.name;
-        setChannels(items);
-        setDStatus(`Cargado (${currentListMeta.method}): ${items.length} elementos.`, 'ok');
-        setTimeout(closeDrawer, 900);
-        showLoadingBar(100);
+
+        // 2) Proxy explícito.
+        if (method === 'proxy' && proxy) {
+          const sep = proxy.includes('?') ? '&' : '?';
+          const resp = await fetch(proxy + sep + 'url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(120000), cache: 'no-store' });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const text = await resp.text();
+          const items = M3UParser.parse(text);
+          if (!items.length) throw new Error('El servidor proxy no devolvió una lista M3U válida.');
+          const autoName = new URL(u).hostname.replace(/^www\./, '');
+          currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || (isXtreamPlaylistUrl(u) ? 'Lista Xtream' : 'Mi lista IPTV'), url: u, method: 'proxy', proxy, updatedAt: Date.now() };
+          $('#listNameInput').value = currentListMeta.name;
+          setChannels(items);
+          setDStatus(`Cargado (proxy): ${items.length} elementos.`, 'ok');
+          setTimeout(closeDrawer, 900);
+          showLoadingBar(100);
+          return;
+        }
+
+        // 3) Directo: para Xtream probamos también HTTPS y salida HLS.
+        const candidates = buildPlaylistCandidates(u);
+        let lastErr = null;
+        for (const candidate of candidates) {
+          try {
+            const resp = await fetch(candidate, { signal: AbortSignal.timeout(120000), cache: 'no-store' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const text = await resp.text();
+            const items = M3UParser.parse(text);
+            if (!items.length) throw new Error('No contiene entradas M3U válidas.');
+            const autoName = new URL(u).hostname.replace(/^www\./, '');
+            currentListMeta = { id: null, name: $('#listNameInput').value.trim() || autoName || (isXtreamPlaylistUrl(u) ? 'Lista Xtream' : 'Mi lista IPTV'), url: u, method: candidate === u ? 'directo' : 'directo (alternativa)', proxy: '', updatedAt: Date.now() };
+            $('#listNameInput').value = currentListMeta.name;
+            setChannels(items);
+            setDStatus(`Cargado (${currentListMeta.method}): ${items.length} elementos.`, 'ok');
+            setTimeout(closeDrawer, 900);
+            showLoadingBar(100);
+            return;
+          } catch (e) { lastErr = e; }
+        }
+        throw lastErr || new Error('No se pudo descargar la lista.');
       } catch (err) {
         const msg = err?.name === 'TimeoutError' || err?.name === 'AbortError'
-          ? 'La descarga superó el tiempo máximo. Comprueba que Termux siga activo y vuelve a intentarlo.'
+          ? 'La descarga superó el tiempo máximo. Si la URL es HTTP, activa Termux o usa un proxy HTTPS.'
           : (err?.message || 'No se pudo cargar la lista.');
         setDStatus('Error: ' + msg, 'err');
         showLoadingBar(0);
@@ -2011,8 +2071,10 @@ const App = (() => {
         const proxied = await tryFetch('proxy', proxyUrl + sep + 'url=' + encodeURIComponent(sourceUrl), 120000);
         if (proxied) return proxied;
       }
-      const direct = await tryFetch('directo', sourceUrl, 120000);
-      if (direct) return direct;
+      for (const candidate of buildPlaylistCandidates(sourceUrl)) {
+        const direct = await tryFetch(candidate === sourceUrl ? 'directo' : 'directo alternativo', candidate, 120000);
+        if (direct) return direct;
+      }
       throw new Error(errors.join(' · ') || 'No se pudo descargar la lista.');
     }
 
