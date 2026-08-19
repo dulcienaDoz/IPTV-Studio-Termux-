@@ -812,7 +812,7 @@ const M3UParser = (() => {
 })();
 
 // ═══════════════════════════════════════════════════
-//  SERVICIO DE REPRODUCTOR (HLS + fallback mejorado)
+//  SERVICIO DE REPRODUCTOR (HLS + formatos nativos)
 // ═══════════════════════════════════════════════════
 const PlayerService = (() => {
   let hls = null;
@@ -827,8 +827,13 @@ const PlayerService = (() => {
 
   function isHlsUrl(url) {
     return /\.m3u8(?:$|[?#])/i.test(url) ||
+           /\.m3u(?:$|[?#])/i.test(url) ||
            /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
-           /\/(?:hls|hls_live)\//i.test(url);
+           /\/(?:hls|hls_live|live)\//i.test(url);
+  }
+
+  function isNativeMediaUrl(url) {
+    return /\.(?:mp4|m4v|webm|mov)(?:$|[?#])/i.test(url);
   }
 
   async function fetchWithTimeout(url, timeout = 60000) {
@@ -860,7 +865,18 @@ const PlayerService = (() => {
     // proxys o URLs dinámicas). Por eso la decisión no puede depender
     // únicamente de la extensión.
     const isExplicitHls = isHlsUrl(url);
+    const isNativeMedia = isNativeMediaUrl(url);
     let playUrl = url;
+
+    // MP4/M4V/WebM/MOV van directamente al elemento <video>.
+    // No se envían a HLS.js.
+    if (isNativeMedia) {
+      statusCallback('Abriendo vídeo...');
+      videoElement.src = playUrl;
+      videoElement.load();
+      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+      return;
+    }
 
     // REPRODUCCIÓN DIRECTA:
     // Termux puede seguir utilizándose para cargar listas, pero no intercepta
@@ -873,7 +889,7 @@ const PlayerService = (() => {
       // que Chrome reproduzca solo el audio porque la URL HLS fue detectada
       // como una fuente de vídeo normal.
       const canUseHls = window.Hls && Hls.isSupported();
-      const shouldTryHls = canUseHls && (isExplicitHls || /^(https?:)?\/\//i.test(playUrl));
+      const shouldTryHls = canUseHls && isExplicitHls;
       if (shouldTryHls) {
         statusCallback(isExplicitHls ? 'Conectando HLS...' : 'Detectando transmisión...');
         hls = new Hls({
