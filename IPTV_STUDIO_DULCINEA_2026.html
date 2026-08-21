@@ -1063,200 +1063,349 @@ const M3UParser = (() => {
 //  SERVICIO DE REPRODUCTOR (HLS + fallback mejorado)
 // ═══════════════════════════════════════════════════
 const PlayerService = (() => {
-  let hls=null, currentChannel=null, mode='idle', watchdog=null;
-  let reconnecting=false, lastProgressAt=0, lastTime=-1, wakeLock=null, wakeLockWanted=false;
+  let hls = null;
+  let currentChannel = null;
+  let retryCount = 0;
+  const MAX_RETRIES = 6;
+  let abortController = null;
+  let screenWakeLock = null;
+  let wakeLockWanted = false;
 
-  function destroyHls(){
-    if(!hls)return;
-    try{hls.stopLoad();}catch{}
-    try{hls.detachMedia();}catch{}
-    try{hls.destroy();}catch{}
-    hls=null;
-  }
-  function clearWatchdog(){
-    if(watchdog)clearInterval(watchdog);
-    watchdog=null;
-  }
-  async function requestWakeLock(){
-    wakeLockWanted=true;
-    if(!('wakeLock' in navigator))return;
-    try{
-      if(wakeLock&&!wakeLock.released)return;
-      wakeLock=await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener?.('release',()=>{
-        wakeLock=null;
-        if(wakeLockWanted&&document.visibilityState==='visible')setTimeout(requestWakeLock,300);
+  async function requestScreenWakeLock() {
+    wakeLockWanted = true;
+    if (!('wakeLock' in navigator)) return;
+    try {
+      if (screenWakeLock && !screenWakeLock.released) return;
+      screenWakeLock = await navigator.wakeLock.request('screen');
+      screenWakeLock.addEventListener?.('release', () => {
+        screenWakeLock = null;
+        if (wakeLockWanted && document.visibilityState === 'visible') {
+          setTimeout(() => requestScreenWakeLock(), 300);
+        }
       });
-    }catch{}
-  }
-  async function releaseWakeLock(){
-    wakeLockWanted=false;
-    try{await wakeLock?.release();}catch{}
-    wakeLock=null;
-  }
-  async function getStreamUrl(url){
-    try{
-      const ctl=new AbortController();
-      const timer=setTimeout(()=>ctl.abort(),1000);
-      const r=await fetch('http://127.0.0.1:8765/health',{cache:'no-store',signal:ctl.signal});
-      clearTimeout(timer);
-      if(r.ok)return 'http://127.0.0.1:8765/stream?url='+encodeURIComponent(url);
-    }catch{}
-    return url;
-  }
-  function isHlsUrl(url){
-    return /\.m3u8?(?:$|[?#])/i.test(url)||
-      /[?&](?:type|format|output)=m3u8\b/i.test(url)||
-      /\/(?:hls|hls_live|live)\//i.test(url);
-  }
-  function isNativeMediaUrl(url){
-    return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(url)||
-      /[?&](?:type|format|output)=mp4\b/i.test(url)||
-      /\/movie(?:\/|$)/i.test(url);
+    } catch {}
   }
 
-  async function createLive(video,sourceUrl,status,error){
-    if(mode!=='live')return;
-    const playUrl=await getStreamUrl(sourceUrl);
-    if(mode!=='live')return;
-
-    const instance=new Hls({
-      enableWorker:true,
-      lowLatencyMode:false,
-      maxBufferLength:10,
-      maxMaxBufferLength:30,
-      backBufferLength:0,
-      liveDurationInfinity:true,
-      capLevelToPlayerSize:true,
-      manifestLoadingMaxRetry:4,
-      levelLoadingMaxRetry:4,
-      fragLoadingMaxRetry:4,
-      fragLoadingRetryDelay:500,
-      startFragPrefetch:true,
-      abrEwmaDefaultEstimate:1000000
-    });
-    hls=instance;
-    lastProgressAt=Date.now();
-    lastTime=-1;
-
-    instance.on(Hls.Events.MEDIA_ATTACHED,()=>{
-      if(mode==='live'&&hls===instance)instance.loadSource(playUrl);
-    });
-    instance.on(Hls.Events.MANIFEST_PARSED,()=>{
-      if(mode!=='live'||hls!==instance)return;
-      lastProgressAt=Date.now();
-      status('LIVE · reproduciendo · reconexión automática','ok');
-      video.play().catch(()=>status('Pulsa ▶ para iniciar'));
-    });
-    instance.on(Hls.Events.LEVEL_LOADED,()=>{
-      if(mode==='live'&&hls===instance)lastProgressAt=Date.now();
-    });
-    instance.on(Hls.Events.FRAG_LOADED,()=>{
-      if(mode==='live'&&hls===instance)lastProgressAt=Date.now();
-    });
-    instance.on(Hls.Events.ERROR,(_,data)=>{
-      if(mode!=='live'||hls!==instance||!data)return;
-      if(data.type===Hls.ErrorTypes.NETWORK_ERROR){
-        try{instance.startLoad(-1);}catch{}
-      }else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){
-        try{instance.recoverMediaError();}catch{}
-      }
-      if(data.fatal){
-        setTimeout(()=>{
-          if(mode==='live'&&hls===instance&&!reconnecting&&Date.now()-lastProgressAt>=2200){
-            reconnect(video,sourceUrl,status,error,data.type===Hls.ErrorTypes.NETWORK_ERROR?'red':'media');
-          }
-        },250);
-      }
-    });
-    instance.attachMedia(video);
+  async function releaseScreenWakeLock() {
+    wakeLockWanted = false;
+    try { await screenWakeLock?.release(); } catch {}
+    screenWakeLock = null;
   }
 
-  async function reconnect(video,sourceUrl,status,error,reason='sin señal'){
-    if(mode!=='live'||reconnecting)return;
-    reconnecting=true;
-    status('LIVE · reconectando · '+reason+'...','err');
 
-    const old=hls;
-    hls=null;
-    if(old){
-      try{old.stopLoad();}catch{}
-      try{old.detachMedia();}catch{}
-      try{old.destroy();}catch{}
+  let liveCleanup = null;
+
+  function clearLiveGuards(videoElement) {
+    if (typeof liveCleanup === 'function') {
+      try { liveCleanup(); } catch {}
     }
-    try{
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
-    }catch{}
-
-    await new Promise(r=>setTimeout(r,250));
-    if(mode==='live'){
-      try{await createLive(video,sourceUrl,status,error);}
-      catch{status('LIVE · no se pudo reconectar','err');}
-    }
-    reconnecting=false;
+    liveCleanup = null;
+    if (videoElement) videoElement.controls = true;
   }
 
-  async function play(channel,video,status,error){
-    stop(video);
-    currentChannel=channel;
-    if(!channel?.url||!video)return;
-    const sourceUrl=String(channel.url);
-
-    if(isNativeMediaUrl(sourceUrl)){
-      mode='vod';
-      try{
-        video.src=sourceUrl;
-        video.load();
-        await video.play();
-      }catch{status('Pulsa ▶ para iniciar');}
-      return;
-    }
-
-    mode='live';
-    if(!window.Hls||!Hls.isSupported()){
-      error('HLS.js no está disponible.');
-      return;
-    }
-    await requestWakeLock();
-    await createLive(video,sourceUrl,status,error);
-
-    clearWatchdog();
-    watchdog=setInterval(()=>{
-      if(mode!=='live'||!hls||hls.destroyed||reconnecting)return;
-      const now=Date.now();
-      const t=Number.isFinite(video.currentTime)?video.currentTime:-1;
-      if(t>=0&&t>lastTime+0.12){
-        lastTime=t;
-        lastProgressAt=now;
-        return;
-      }
-      const stalledFor=now-lastProgressAt;
-      if(stalledFor>=2500){
-        try{hls.startLoad(-1);}catch{}
-        if(video.paused)video.play().catch(()=>{});
-      }
-      if(stalledFor>=5000){
-        reconnect(video,sourceUrl,status,error,'sin señal');
-      }
-    },500);
+  function destroyHls() {
+    if (hls) { hls.destroy(); hls = null; }
   }
 
-  function stop(video){
-    mode='idle';
-    reconnecting=false;
-    clearWatchdog();
+  function isHlsUrl(url) {
+    return /\.m3u8(?:$|[?#])/i.test(url) ||
+           /\.m3u(?:$|[?#])/i.test(url) ||
+           /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
+           /\/(?:hls|hls_live|live)\//i.test(url);
+  }
+
+  function isNativeMediaUrl(url) {
+    return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(url) ||
+           /[?&](?:type|format|output)=mp4\b/i.test(url) ||
+           /\/movie(?:\/|$)/i.test(url);
+  }
+
+  async function fetchWithTimeout(url, timeout = 60000) {
+    abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), timeout);
+    try {
+      const resp = await fetch(url, { signal: abortController.signal, mode: 'cors', cache: 'no-store' });
+      clearTimeout(timeoutId);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.text();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  }
+
+  async function play(channel, videoElement, statusCallback, errorCallback) {
+    if (!videoElement) return;
+    currentChannel = channel;
+    retryCount = 0;
+    document.getElementById('playerFs')?.classList.remove('native-vod');
+    clearLiveGuards(videoElement);
     destroyHls();
-    releaseWakeLock();
-    if(video){
-      try{video.pause();}catch{}
-      try{video.removeAttribute('src');video.load();}catch{}
-      video.controls=false;
+    videoElement.pause();
+    videoElement.removeAttribute('src');
+    videoElement.load();
+    statusCallback('Preparando...');
+
+    const url = channel.url;
+    // Algunas fuentes HLS no terminan en .m3u8 (redirecciones, tokens,
+    // proxys o URLs dinámicas). Por eso la decisión no puede depender
+    // únicamente de la extensión.
+    const isExplicitHls = isHlsUrl(url);
+    const isNativeMedia = isNativeMediaUrl(url);
+    let playUrl = url;
+
+    // VOD/archivos directos NO pasan por Termux /stream ni HLS.js.
+    // Esto cubre MP4 de /movie/..., además de M4V/WebM/MOV/OGV.
+    if (isNativeMedia) {
+      document.getElementById('playerFs')?.classList.add('native-vod');
+      statusCallback('Abriendo vídeo...');
+      videoElement.controls = true;
+      videoElement.src = playUrl;
+      videoElement.load();
+      requestScreenWakeLock();
+      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+      return;
     }
-    currentChannel=null;
+
+    // Termux queda disponible para los streams LIVE/HLS, que es donde
+    // ya comprobamos que el HTML funcional lo utilizaba.
+    try {
+      const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 500);
+      if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
+    } catch {}
+
+    try {
+      // Preferimos HLS.js para HLS explícito y también hacemos un intento
+      // controlado para URLs de streaming sin extensión .m3u8. Si no son HLS,
+      // el fallback nativo se activa automáticamente. Esto evita el caso en
+      // que Chrome reproduzca solo el audio porque la URL HLS fue detectada
+      // como una fuente de vídeo normal.
+      const canUseHls = window.Hls && Hls.isSupported();
+      const shouldTryHls = canUseHls && (isExplicitHls || /^(https?:)?\/\//i.test(playUrl));
+      if (shouldTryHls) {
+        statusCallback(isExplicitHls ? 'Conectando HLS...' : 'Detectando transmisión...');
+        hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          maxBufferLength: 10,
+          maxMaxBufferLength: 20,
+          backBufferLength: 0,
+          liveDurationInfinity: true,
+          capLevelToPlayerSize: true,
+          manifestLoadingMaxRetry: 5,
+          levelLoadingMaxRetry: 5,
+          fragLoadingMaxRetry: 5,
+          fragLoadingRetryDelay: 1000,
+          startFragPrefetch: true,
+          abrEwmaDefaultEstimate: 1e6,
+        });
+
+        // LIVE SIN DVR: una sola implementación. PiP/fullscreen quedan intactos.
+        let liveNoDvr = false;
+        let liveNoDvrBusy = false;
+        let liveSeekingHandler = null;
+        let liveStallTimer = null;
+        let lastLiveTime = -1;
+        let lastLiveAdvanceAt = Date.now();
+
+        const enableLiveNoDvr = () => {
+          if (liveNoDvr) return;
+          liveNoDvr = true;
+          videoElement.controls = false;
+
+          liveSeekingHandler = () => {
+            if (!liveNoDvr || liveNoDvrBusy || !hls || hls.destroyed) return;
+            const livePos = hls.liveSyncPosition;
+            if (!Number.isFinite(livePos)) return;
+
+            // Solo corrige una petición explícita de seek; no mueve el playhead
+            // mientras el LIVE avanza normalmente.
+            liveNoDvrBusy = true;
+            try { videoElement.currentTime = livePos; } catch {}
+            setTimeout(() => { liveNoDvrBusy = false; }, 50);
+          };
+          videoElement.addEventListener('seeking', liveSeekingHandler);
+
+          // Sincronización inicial al punto LIVE.
+          try {
+            const livePos = hls.liveSyncPosition;
+            if (Number.isFinite(livePos)) videoElement.currentTime = livePos;
+          } catch {}
+
+          lastLiveTime = videoElement.currentTime || 0;
+          lastLiveAdvanceAt = Date.now();
+
+          liveStallTimer = setInterval(() => {
+            if (!liveNoDvr || !hls || hls.destroyed || videoElement.paused) return;
+
+            const now = Date.now();
+            const t = videoElement.currentTime || 0;
+
+            if (t > lastLiveTime + 0.15) {
+              lastLiveTime = t;
+              lastLiveAdvanceAt = now;
+              return;
+            }
+
+            // Recuperación suave si el LIVE realmente dejó de avanzar.
+            if (now - lastLiveAdvanceAt >= 12000 && !liveNoDvrBusy) {
+              liveNoDvrBusy = true;
+              statusCallback('Señal LIVE detenida; recuperando...', 'err');
+              try { hls.startLoad(-1); } catch {}
+              lastLiveAdvanceAt = now;
+              setTimeout(() => { liveNoDvrBusy = false; }, 1800);
+            }
+          }, 2000);
+
+          statusCallback('HLS en vivo · sin DVR', 'ok');
+        };
+
+        const disableLiveNoDvr = () => {
+          if (liveStallTimer) clearInterval(liveStallTimer);
+          liveStallTimer = null;
+
+          if (liveSeekingHandler) {
+            try { videoElement.removeEventListener('seeking', liveSeekingHandler); } catch {}
+          }
+          liveSeekingHandler = null;
+          liveNoDvr = false;
+          liveNoDvrBusy = false;
+          lastLiveTime = -1;
+          lastLiveAdvanceAt = 0;
+          videoElement.controls = true;
+        };
+
+        // Exponer solo la limpieza de esta reproducción al servicio global.
+        liveCleanup = disableLiveNoDvr;
+
+        hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+          if (data?.details?.live) enableLiveNoDvr();
+        });
+
+        hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          requestScreenWakeLock();
+          statusCallback('HLS listo. Reproduciendo...', 'ok');
+          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+        });
+
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          if (!data.fatal) return;
+
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            statusCallback('Error de red. Reintentando...', 'err');
+            if (retryCount < MAX_RETRIES) {
+              retryCount++;
+              setTimeout(() => {
+                if (hls && !hls.destroyed) hls.startLoad(-1);
+              }, Math.min(8000, 1000 * retryCount));
+            } else if (!isExplicitHls) {
+              // Si la URL no parecía HLS, damos una oportunidad al reproductor
+              // nativo; puede ser MP4/TS u otro formato compatible.
+              fallbackToNative();
+            } else {
+              errorCallback('No se pudo conectar después de varios intentos.');
+            }
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            statusCallback('Recuperando vídeo...', 'err');
+            try {
+              if (hls && !hls.destroyed) hls.recoverMediaError();
+            } catch {}
+          } else {
+            if (!isExplicitHls) {
+              fallbackToNative();
+            } else {
+              const detail = String(data.details || '');
+              if (/CODECS|INCOMPATIBLE|BUFFER/i.test(detail)) {
+                errorCallback('El vídeo usa un códec o formato no compatible con este dispositivo.');
+              } else {
+                errorCallback('El formato de vídeo no es compatible o la fuente está dañada.');
+              }
+            }
+          }
+        });
+
+        function fallbackToNative() {
+          if (hls && !hls.destroyed) hls.destroy();
+          hls = null;
+          retryCount = 0;
+          if (liveSeekingHandler) {
+            videoElement.removeEventListener('seeking', liveSeekingHandler);
+          }
+          liveSeekingHandler = null;
+          liveNoDvr = false;
+          liveNoDvrBusy = false;
+          videoElement.controls = true;
+          statusCallback('Probando reproductor nativo...');
+          videoElement.pause();
+          videoElement.removeAttribute('src');
+          videoElement.load();
+          videoElement.src = playUrl;
+          videoElement.load();
+          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+        }
+
+        // Detecta el caso concreto: el audio avanza pero no aparecen cuadros
+        // de vídeo. No usamos loadedmetadata para cancelar el diagnóstico porque
+        // ese evento también puede ocurrir cuando solo existe una pista de audio.
+        let watchdogDone = false;
+        let videoWatchdog = null;
+        const clearVideoWatchdog = () => {
+          if (watchdogDone) return;
+          watchdogDone = true;
+          if (videoWatchdog) {
+            clearInterval(videoWatchdog);
+            videoWatchdog = null;
+          }
+        };
+        const checkVideoTrack = () => {
+          if (watchdogDone || !videoElement) return;
+          if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+            clearVideoWatchdog();
+            return;
+          }
+          if (!hls || hls.destroyed) return;
+          if (!videoElement.paused && videoElement.currentTime > 0) {
+            statusCallback('Audio detectado; recuperando vídeo...', 'err');
+            try {
+              hls.recoverMediaError();
+              hls.startLoad(-1);
+            } catch {}
+          }
+        };
+        videoElement.addEventListener('loadeddata', checkVideoTrack);
+        videoElement.addEventListener('playing', checkVideoTrack);
+        videoElement.addEventListener('resize', checkVideoTrack);
+        videoWatchdog = setInterval(checkVideoTrack, 2500);
+        setTimeout(clearVideoWatchdog, 12000);
+        hls.attachMedia(videoElement);
+      } else {
+        statusCallback('Abriendo vídeo...');
+        videoElement.src = playUrl;
+        videoElement.load();
+        videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+      }
+    } catch (err) {
+      errorCallback('Error al iniciar: ' + err.message);
+    }
   }
-  return {play,stop,getCurrentChannel:()=>currentChannel,isHlsUrl,_getHls:()=>hls};
+
+  function stop(videoElement) {
+    clearLiveGuards(videoElement);
+    releaseScreenWakeLock();
+    document.getElementById('playerFs')?.classList.remove('native-vod');
+    destroyHls();
+    if (videoElement) {
+      videoElement.pause();
+      videoElement.removeAttribute('src');
+      videoElement.load();
+    }
+    currentChannel = null;
+    if (abortController) { abortController.abort(); abortController = null; }
+  }
+
+  function getCurrentChannel() { return currentChannel; }
+return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -2410,6 +2559,13 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
       const shell = $('#playerFs');
       if (!vid || !shell || !shell.classList.contains('open')) return;
       if (document.visibilityState === 'visible') {
+        try {
+          const h = PlayerService._getHls?.();
+          if (h && !h.destroyed) {
+            h.startLoad(-1);
+            if (vid.readyState < 3) h.recoverMediaError?.();
+          }
+        } catch {}
         if (pipWasActive && pipWasPlaying && vid.paused) {
           vid.play().catch(() => {});
         }
