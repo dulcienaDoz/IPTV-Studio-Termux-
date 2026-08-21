@@ -821,52 +821,6 @@ const PlayerService = (() => {
   const MAX_RETRIES = 6;
   let abortController = null;
 
-  // Control LIVE: mantener el reproductor cerca del borde en vivo sin
-  // forzar saltos durante una reproducción normal.
-  let liveEdgeTimer = null;
-  function stopLiveEdgeGuard() {
-    if (liveEdgeTimer) {
-      clearInterval(liveEdgeTimer);
-      liveEdgeTimer = null;
-    }
-  }
-
-  function startLiveEdgeGuard() {
-    stopLiveEdgeGuard();
-    liveEdgeTimer = setInterval(() => {
-      try {
-        const v = videoElement;
-        const h = hls;
-        if (!v || !h || h.destroyed || v.paused) return;
-        const details = h.levels?.[h.currentLevel >= 0 ? h.currentLevel : 0]?.details;
-        if (!details || !details.live) return;
-
-        const end = details.edge ?? details.totalduration;
-        if (!Number.isFinite(end)) return;
-
-        // Si el buffer terminó o el retraso respecto al borde live creció
-        // demasiado, pedir nuevos segmentos antes de reconstruir el player.
-        const bufferedEnd = v.buffered.length
-          ? v.buffered.end(v.buffered.length - 1)
-          : v.currentTime;
-        const lag = end - bufferedEnd;
-
-        if (v.readyState < 3 || lag > 12) {
-          try { h.startLoad(-1); } catch {}
-        }
-
-        // Solo recuperar la posición cuando estamos claramente detrás del
-        // borde y el navegador ya no tiene datos reproducibles.
-        if (v.readyState < 2 && lag > 20) {
-          const livePos = h.liveSyncPosition;
-          if (Number.isFinite(livePos)) {
-            try { v.currentTime = livePos; } catch {}
-          }
-        }
-      } catch {}
-    }, 5000);
-  }
-
   function destroyHls() {
     stopLiveEdgeGuard();
     if (hls) { hls.destroy(); hls = null; }
@@ -942,20 +896,66 @@ const PlayerService = (() => {
         hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
-          backBufferLength: 15,
+          maxBufferLength: 24,
+          maxMaxBufferLength: 48,
+          backBufferLength: 6,
           capLevelToPlayerSize: false,
-          manifestLoadingMaxRetry: 2,
-          levelLoadingMaxRetry: 2,
-          fragLoadingMaxRetry: 2,
+          manifestLoadingMaxRetry: 3,
+          levelLoadingMaxRetry: 3,
+          fragLoadingMaxRetry: 4,
           fragLoadingRetryDelay: 1000,
           startFragPrefetch: false,
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 8,
+          maxLiveSyncPlaybackRate: 1.1,
+          liveDurationInfinity: true
         });
 
         hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
+        let lastLevelUpdate = Date.now();
+        let lastFragmentLoaded = Date.now();
+        let liveRecoveryTimer = null;
+        let liveRecoveryActive = false;
+
+        const stopLiveRecovery = () => {
+          if (liveRecoveryTimer) {
+            clearInterval(liveRecoveryTimer);
+            liveRecoveryTimer = null;
+          }
+        };
+
+        const startLiveRecovery = () => {
+          stopLiveRecovery();
+          liveRecoveryTimer = setInterval(() => {
+            if (!hls || hls.destroyed || !videoElement || videoElement.paused) return;
+
+            const staleLevel = Date.now() - lastLevelUpdate > 15000;
+            const staleFrag = Date.now() - lastFragmentLoaded > 15000;
+
+            if ((staleLevel || staleFrag) && !liveRecoveryActive) {
+              liveRecoveryActive = true;
+              statusCallback('Actualizando transmisión...', 'err');
+              try { hls.startLoad(-1); } catch {}
+              setTimeout(() => { liveRecoveryActive = false; }, 4000);
+            }
+          }, 5000);
+        };
+
+        hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+          lastLevelUpdate = Date.now();
+          liveRecoveryActive = false;
+          if (data?.details?.live) statusCallback('HLS en vivo. Reproduciendo...', 'ok');
+        });
+
+        hls.on(Hls.Events.FRAG_LOADED, () => {
+          lastFragmentLoaded = Date.now();
+          liveRecoveryActive = false;
+          if (!videoElement.paused) statusCallback('HLS en vivo. Reproduciendo...', 'ok');
+        });
+
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           statusCallback('HLS listo. Reproduciendo...', 'ok');
+          startLiveRecovery();
           videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
         });
         hls.on(Hls.Events.ERROR, (_, data) => {
@@ -963,65 +963,13 @@ const PlayerService = (() => {
 
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             statusCallback('Conexión interrumpida. Recuperando...', 'err');
-            if (retryCount < MAX_RETRIES) {
-              retryCount++;
-              const delay = Math.min(12000, 1500 * retryCount);
-              setTimeout(() => {
-                if (!videoElement || !hls || hls.destroyed) return;
-                try { hls.startLoad(-1); } catch {}
-              }, delay);
-            } else {
-              // Reconstruir HLS automáticamente en vez de exigir "Actualizar".
-              retryCount = 0;
-              const savedTime = Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0;
-              const wasPlaying = !videoElement.paused;
-              setTimeout(() => {
-                if (!videoElement) return;
-                try { destroyHls(); } catch {}
-                try {
-                  videoElement.pause();
-                  videoElement.removeAttribute('src');
-                  videoElement.load();
-                  statusCallback('Reconectando vídeo...', 'err');
-
-                  const rebuilt = new Hls({
-                    enableWorker: true,
-                    lowLatencyMode: false,
-                    maxBufferLength: 30,
-                    maxMaxBufferLength: 60,
-                    backBufferLength: 10,
-                    capLevelToPlayerSize: false,
-                    manifestLoadingMaxRetry: 4,
-                    levelLoadingMaxRetry: 4,
-                    fragLoadingMaxRetry: 4,
-                    fragLoadingRetryDelay: 1000,
-                    startFragPrefetch: false,
-                    liveSyncDurationCount: 3,
-                    liveMaxLatencyDurationCount: 6,
-                    maxLiveSyncPlaybackRate: 1.15
-                  });
-
-                  hls = rebuilt;
-                  rebuilt.on(Hls.Events.MEDIA_ATTACHED, () => rebuilt.loadSource(playUrl));
-                  rebuilt.on(Hls.Events.MANIFEST_PARSED, () => {
-                    statusCallback('Reconectado. Reproduciendo...', 'ok');
-                    if (savedTime > 0) {
-                      try { videoElement.currentTime = savedTime; } catch {}
-                    }
-                    if (wasPlaying) videoElement.play().catch(() => {});
-                  });
-                  rebuilt.on(Hls.Events.ERROR, (_, d) => {
-                    if (d.fatal && d.type === Hls.ErrorTypes.MEDIA_ERROR) {
-                      try { rebuilt.recoverMediaError(); } catch {}
-                    }
-                  });
-                  rebuilt.attachMedia(videoElement);
-                } catch {
-                  errorCallback('No se pudo recuperar la conexión automáticamente.');
-                }
-              }, 2500);
-            }
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            retryCount++;
+            const delay = Math.min(10000, 1500 * Math.min(retryCount, 6));
+            setTimeout(() => {
+              if (!hls || hls.destroyed) return;
+              try { hls.startLoad(-1); } catch {}
+            }, delay);
+                    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             statusCallback('Recuperando vídeo...', 'err');
             try {
               if (hls && !hls.destroyed) hls.recoverMediaError();
