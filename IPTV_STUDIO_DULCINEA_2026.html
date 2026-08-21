@@ -400,332 +400,6 @@ ul { list-style: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
-
-/* ═══════════════════════════════════════════════════
-   APP VIEWS
-═══════════════════════════════════════════════════ */
-.app-view {
-  position: fixed; inset: 0;
-  background: var(--bg-primary);
-  z-index: 20;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: calc(var(--bottom-nav-height) + 16px);
-  padding-top: calc(var(--nav-height) + 8px);
-  transform: translateX(100%);
-  opacity: 0;
-  transition: transform var(--transition-base), opacity var(--transition-base);
-  pointer-events: none;
-}
-.app-view.open { transform: translateX(0); opacity: 1; pointer-events: auto; }
-
-.view-header {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 16px 10px;
-  position: sticky; top: 0;
-  background: var(--bg-primary); z-index: 10;
-  border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: 8px;
-}
-.view-back {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: var(--bg-tertiary);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; flex-shrink: 0;
-}
-.view-title { font-size: 18px; font-weight: 700; flex: 1; }
-.view-count { font-size: 12px; color: var(--text-tertiary); background: var(--bg-tertiary); padding: 2px 8px; border-radius: 12px; }
-.view-action-btn { font-size: 13px; color: var(--text-secondary); padding: 6px 12px; border-radius: 8px; background: var(--bg-tertiary); white-space: nowrap; }
-.view-empty { text-align: center; padding: 48px 24px; color: var(--text-tertiary); }
-.view-empty .ei { font-size: 48px; margin-bottom: 12px; }
-.view-empty-inline { text-align: center; padding: 32px; color: var(--text-tertiary); grid-column: 1/-1; }
-
-/* ═══ MORE PANEL ═══ */
-.more-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-  z-index: 190; opacity: 0; pointer-events: none; transition: opacity var(--transition-base);
-}
-.more-backdrop.open { opacity: 1; pointer-events: auto; }
-.more-panel {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  background: var(--bg-secondary); border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  z-index: 191; padding: 8px 0 calc(var(--bottom-nav-height) + 4px);
-  transform: translateY(100%); transition: transform var(--transition-slow);
-  max-height: 75vh; overflow-y: auto;
-}
-.more-panel.open { transform: translateY(0); }
-.more-pill { width: 40px; height: 4px; background: var(--bg-elevated); border-radius: 2px; margin: 8px auto 14px; }
-.more-title { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--text-tertiary); text-transform: uppercase; padding: 0 20px 8px; }
-.more-list { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
-.more-item {
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 12px; border-radius: var(--radius-md);
-  font-size: 15px; font-weight: 500; text-align: left;
-  transition: background var(--transition-fast);
-}
-.more-item:active, .more-item:hover { background: var(--bg-tertiary); }
-.more-icon { font-size: 20px; width: 28px; text-align: center; }
-
-/* ═══ CONFIRM DIALOG ═══ */
-.confirm-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.72);
-  z-index: 600; display: flex; align-items: center; justify-content: center;
-  opacity: 0; pointer-events: none; transition: opacity var(--transition-fast);
-}
-.confirm-backdrop.open { opacity: 1; pointer-events: auto; }
-.confirm-dialog {
-  background: var(--bg-secondary); border-radius: var(--radius-lg);
-  padding: 24px; max-width: 320px; width: 90%;
-  box-shadow: var(--shadow-lg);
-}
-.confirm-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
-.confirm-msg { font-size: 14px; color: var(--text-secondary); margin-bottom: 20px; }
-.confirm-acts { display: flex; gap: 12px; justify-content: flex-end; }
-
-/* ═══ FILTER TABS ═══ */
-.filter-tabs {
-  display: flex; gap: 8px; padding: 0 16px 12px;
-  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
-}
-.filter-tabs::-webkit-scrollbar { display: none; }
-.filter-tab {
-  flex-shrink: 0; padding: 6px 14px; border-radius: 20px;
-  font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
-  background: var(--bg-tertiary); color: var(--text-secondary);
-  border: 1px solid var(--border-subtle); transition: all var(--transition-fast);
-  white-space: nowrap;
-}
-.filter-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-/* ═══ CONTENT GRID ═══ */
-.content-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(clamp(130px,28vw,180px),1fr));
-  gap: 10px; padding: 0 12px 24px;
-}
-
-/* ═══ EXPLORE ═══ */
-.explore-search-bar {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md); padding: 8px 12px; margin: 0 16px 12px;
-}
-.explore-si { font-size: 15px; color: var(--text-tertiary); }
-.explore-input { flex: 1; background: none; border: none; outline: none; font-size: 14px; color: var(--text-primary); }
-.explore-input::placeholder { color: var(--text-muted); }
-.explore-clear { background: none; border: none; color: var(--text-tertiary); font-size: 14px; padding: 2px 4px; }
-.explore-sort-row { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; margin-bottom: 12px; }
-.explore-sort { background: var(--bg-tertiary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--text-primary); }
-.explore-count { font-size: 12px; color: var(--text-tertiary); }
-.explore-empty { text-align: center; color: var(--text-tertiary); padding: 32px; grid-column: 1/-1; }
-
-/* ═══ LIVE VIEW ═══ */
-.live-group { margin-bottom: 4px; }
-.live-group-header {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 16px 8px; font-weight: 600;
-  border-bottom: 1px solid var(--border-subtle); margin-bottom: 8px;
-}
-.live-group-icon { font-size: 18px; }
-.live-group-name { flex: 1; font-size: 15px; }
-.live-group-count { font-size: 12px; color: var(--text-tertiary); background: var(--bg-tertiary); padding: 2px 8px; border-radius: 12px; }
-.live-grid { padding: 0 12px 12px; }
-
-/* ═══ MY LIST ═══ */
-.mylist-tabs {
-  display: flex; gap: 6px; padding: 0 16px 12px;
-  overflow-x: auto; scrollbar-width: none;
-}
-.mylist-tabs::-webkit-scrollbar { display: none; }
-.mylist-tab {
-  flex-shrink: 0; padding: 8px 14px; border-radius: 20px;
-  font-size: 13px; font-weight: 500; white-space: nowrap;
-  background: var(--bg-tertiary); color: var(--text-secondary);
-  border: 1px solid var(--border-subtle); transition: all var(--transition-fast);
-}
-.mylist-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-.tab-count { font-size: 11px; opacity: 0.7; margin-left: 4px; }
-
-/* ═══ HISTORY ═══ */
-.history-item {
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 16px; border-bottom: 1px solid var(--border-subtle);
-  cursor: pointer; transition: background var(--transition-fast); position: relative;
-}
-.history-item:hover, .history-item:active { background: var(--bg-secondary); }
-.hi-thumb {
-  width: 54px; height: 54px; border-radius: 8px; overflow: hidden; flex-shrink: 0;
-  background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center;
-}
-.hi-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.hi-fb { font-size: 22px; }
-.hi-info { flex: 1; min-width: 0; }
-.hi-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hi-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hi-menu-wrap { position: relative; flex-shrink: 0; }
-.hi-menu-btn { width: 36px; height: 36px; font-size: 18px; color: var(--text-tertiary); border-radius: 50%; }
-.hi-menu {
-  position: absolute; right: 0; top: 100%; background: var(--bg-elevated);
-  border: 1px solid var(--border-medium); border-radius: var(--radius-md);
-  min-width: 180px; z-index: 50; overflow: hidden;
-  opacity: 0; pointer-events: none; transform: scale(0.95) translateY(-4px);
-  transform-origin: top right; transition: all var(--transition-fast);
-}
-.hi-menu.open { opacity: 1; pointer-events: auto; transform: scale(1) translateY(0); }
-.hi-menu-opt {
-  display: flex; align-items: center; gap: 8px;
-  width: 100%; padding: 12px 16px; font-size: 13px;
-  text-align: left; transition: background var(--transition-fast);
-}
-.hi-menu-opt:hover { background: var(--bg-glass); }
-.hi-menu-opt.danger { color: #ff6b6b; }
-
-/* ═══ SETTINGS ═══ */
-.settings-list { padding: 0 8px; }
-.settings-section { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--text-tertiary); text-transform: uppercase; padding: 16px 12px 6px; }
-.settings-item {
-  display: flex; align-items: center; gap: 14px; width: 100%;
-  padding: 14px 12px; border-radius: var(--radius-md); font-size: 14px;
-  text-align: left; transition: background var(--transition-fast);
-}
-.settings-item:hover, .settings-item:active { background: var(--bg-tertiary); }
-.settings-icon { font-size: 20px; width: 28px; text-align: center; }
-.settings-item.danger { color: #ff6b6b; }
-
-/* ═══ TERMUX STATUS ═══ */
-.termux-container { padding: 16px; }
-.termux-desc { font-size: 13px; color: var(--text-secondary); background: var(--bg-secondary); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px; line-height: 1.6; }
-.termux-status-card { background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border-subtle); }
-.termux-checking { display: flex; align-items: center; gap: 12px; color: var(--text-secondary); font-size: 14px; }
-.termux-ok, .termux-error { display: flex; align-items: flex-start; gap: 14px; }
-.termux-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
-.termux-dot.ok { background: #4caf50; box-shadow: 0 0 8px rgba(76,175,80,0.5); }
-.termux-dot.error { background: #f44336; }
-.termux-status-title { font-size: 15px; font-weight: 600; }
-.termux-status-sub { font-size: 13px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
-.termux-info { font-size: 12px; color: var(--text-tertiary); }
-.termux-info code { font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; }
-.termux-help { margin-top: 24px; }
-.termux-help-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
-.termux-help-list { list-style: decimal; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--text-secondary); }
-.termux-help-list code { font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
-
-
-/* ===== VOD · GESTOS Y FEEDBACK ===== */
-.vod-gesture-layer{
-  position:absolute; inset:0; z-index:12; pointer-events:none;
-}
-.vod-zone{
-  position:absolute; top:0; bottom:0; width:38%;
-  border:0; background:transparent; pointer-events:none;
-  -webkit-tap-highlight-color:transparent;
-}
-.vod-zone-left{left:0}
-.vod-zone-right{right:0}
-.vod-gesture-layer.active .vod-zone{pointer-events:auto}
-.vod-seek-feedback{
-  position:absolute; left:50%; top:50%;
-  transform:translate(-50%,-50%) scale(.85);
-  min-width:100px; min-height:56px; padding:12px 18px;
-  border-radius:18px;
-  background:rgba(0,0,0,.72);
-  border:1px solid rgba(255,255,255,.16);
-  color:#fff; font-weight:800; font-size:18px;
-  display:flex; align-items:center; justify-content:center;
-  opacity:0; pointer-events:none;
-  transition:opacity .12s ease, transform .12s ease;
-  backdrop-filter:blur(10px);
-}
-.vod-seek-feedback.show{
-  opacity:1; transform:translate(-50%,-50%) scale(1);
-}
-.vod-seek-feedback.forward{margin-left:24%}
-.vod-seek-feedback.back{margin-left:-24%}
-@media(max-width:600px){
-  .vod-zone{width:42%}
-}
-
-/* ===== CONTROLES INFERIORES CORREGIDOS ===== */
-.player-controls.persistent-controls{
-  position:absolute;
-  left:0;right:0;bottom:0;
-  z-index:30;
-  display:grid;
-  grid-template-columns:auto auto minmax(0,1fr) auto auto;
-  align-items:center;
-  gap:8px;
-  min-height:58px;
-  padding:26px 12px 10px;
-  box-sizing:border-box;
-  background:linear-gradient(to top,rgba(0,0,0,.94),rgba(0,0,0,0));
-  opacity:1!important;
-  visibility:visible!important;
-  pointer-events:auto!important;
-  touch-action:manipulation;
-}
-.player-controls.persistent-controls.player-idle{
-  opacity:1!important;visibility:visible!important;pointer-events:auto!important;
-}
-.player-controls.persistent-controls .pc-btn{
-  width:38px;height:38px;
-  flex:none;
-  border:0;border-radius:50%;
-  background:rgba(0,0,0,.72);
-  color:#fff;
-  display:flex;align-items:center;justify-content:center;
-  font-size:16px;line-height:1;padding:0;
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
-}
-.player-controls.persistent-controls .pc-time{
-  min-width:34px;
-  max-width:48px;
-  color:#fff;
-  font:10px/1 monospace;
-  text-align:center;
-  user-select:none;
-  overflow:hidden;
-}
-.player-controls.persistent-controls .pc-seek{
-  width:100%;
-  min-width:50px;
-  margin:0;
-  accent-color:#fff;
-  touch-action:pan-x;
-}
-.player-controls.persistent-controls .pc-volume{
-  width:68px;
-  min-width:46px;
-  margin:0;
-  accent-color:#fff;
-  touch-action:pan-x;
-}
-@media(max-width:560px){
-  .player-controls.persistent-controls{
-    grid-template-columns:auto minmax(0,1fr) auto;
-    gap:7px;
-    padding:24px 8px 8px;
-  }
-  .player-controls.persistent-controls .pc-time{
-    display:none;
-  }
-  .player-controls.persistent-controls .pc-volume{
-    width:58px;
-    min-width:50px;
-  }
-  .player-controls.persistent-controls .pc-btn{
-    width:36px;height:36px;
-  }
-  /* Duration is still available to JS but not rendered on tiny screens. */
-  .player-controls.persistent-controls #pcDuration{display:none}
-}
-
-.player-controls.persistent-controls,
-.player-controls.persistent-controls.player-idle{
-  opacity:1!important; visibility:visible!important; pointer-events:auto!important;
-}
-#playerControls{z-index:40!important}
-#playerTopBar{z-index:50!important}
 </style>
 </head>
 <body>
@@ -860,20 +534,8 @@ ul { list-style: none; }
       <button class="player-option danger" id="optClose" type="button">✕&nbsp; Cerrar reproductor</button>
     </div>
   </div>
-  <video id="mainVid" playsinline preload="metadata"></video>
-  <div class="player-controls persistent-controls" id="playerControls" aria-label="Controles de reproducción">
-  <button class="pc-btn" id="pcPlay" type="button" aria-label="Reproducir o pausar">▶</button>
-  <span class="pc-time" id="pcCurrent">00:00</span>
-  <input class="pc-seek" id="pcSeek" type="range" min="0" max="100" value="0" step="0.1" aria-label="Posición">
-  <span class="pc-time" id="pcDuration">00:00</span>
-  <button class="pc-btn" id="pcMute" type="button" aria-label="Silenciar">🔊</button>
-  <input class="pc-volume" id="pcVolume" type="range" min="0" max="1" value="1" step="0.01" aria-label="Volumen">
-</div>
-  <div class="vod-gesture-layer" id="vodGestureLayer" aria-hidden="true">
-    <button class="vod-zone vod-zone-left" id="vodZoneLeft" type="button" aria-label="Retroceder 10 segundos"></button>
-    <button class="vod-zone vod-zone-right" id="vodZoneRight" type="button" aria-label="Avanzar 10 segundos"></button>
-    <div class="vod-seek-feedback" id="vodSeekFeedback"></div>
-  </div>
+  <video id="mainVid" controls playsinline preload="metadata"></video>
+  <div class="player-controls" id="playerControls"></div>
 </div>
 
 <!-- ===== PROFILES ===== -->
@@ -952,48 +614,12 @@ ul { list-style: none; }
 <nav class="bot-nav" aria-label="Navegación móvil">
   <div class="bot-nav-inner">
     <button class="bn-btn active" data-bnav="inicio" aria-label="Inicio"><span class="bni">🏠</span>Inicio</button>
-    <button class="bn-btn" data-bnav="explore" aria-label="Explorar"><span class="bni">🔎</span>Explorar</button>
-    <button class="bn-btn" data-bnav="live" aria-label="En vivo"><span class="bni">🔴</span>En vivo</button>
-    <button class="bn-btn" data-bnav="mylist" aria-label="Mi lista"><span class="bni">❤️</span>Mi lista</button>
-    <button class="bn-btn" data-bnav="more" aria-label="Más"><span class="bni">⋯</span>Más</button>
+    <button class="bn-btn" data-bnav="search" aria-label="Buscar"><span class="bni">🔍</span>Buscar</button>
+    <button class="bn-btn" data-bnav="nuevos" aria-label="Nuevos"><span class="bni">🔥</span>Nuevos</button>
+    <button class="bn-btn" data-bnav="milista" aria-label="Mi lista"><span class="bni">📋</span>Mi lista</button>
+    <button class="bn-btn" data-bnav="perfil" aria-label="Perfil"><span class="bni">👤</span>Perfil</button>
   </div>
 </nav>
-
-<!-- ===== APP VIEWS ===== -->
-<div class="app-view" id="viewExplore" role="main" aria-label="Explorar catálogo"></div>
-<div class="app-view" id="viewLive" role="main" aria-label="Canales en vivo"></div>
-<div class="app-view" id="viewMovies" role="main" aria-label="Películas"></div>
-<div class="app-view" id="viewSeries" role="main" aria-label="Series"></div>
-<div class="app-view" id="viewMyList" role="main" aria-label="Mi lista"></div>
-<div class="app-view" id="viewHistory" role="main" aria-label="Historial"></div>
-<div class="app-view" id="viewSettings" role="main" aria-label="Configuración"></div>
-<div class="app-view" id="viewTermux" role="main" aria-label="Estado de Termux"></div>
-
-<!-- ===== MORE PANEL ===== -->
-<div class="more-backdrop" id="morePanelBackdrop"></div>
-<div class="more-panel" id="morePanel" role="dialog" aria-modal="true" aria-label="Más opciones">
-  <div class="more-pill"></div>
-  <div class="more-title">Más opciones</div>
-  <div class="more-list">
-    <button class="more-item" data-more="history"><span class="more-icon">🕘</span>Historial</button>
-    <button class="more-item" data-more="settings"><span class="more-icon">⚙️</span>Configuración</button>
-    <button class="more-item" data-more="update"><span class="more-icon">🔄</span>Actualizar lista</button>
-    <button class="more-item" data-more="termux"><span class="more-icon">📡</span>Estado de Termux</button>
-    <button class="more-item" data-more="info"><span class="more-icon">ℹ️</span>Información</button>
-  </div>
-</div>
-
-<!-- ===== CONFIRM DIALOG ===== -->
-<div class="confirm-backdrop" id="confirmDialogBg">
-  <div class="confirm-dialog" role="alertdialog" aria-modal="true">
-    <div class="confirm-title" id="confirmTitle"></div>
-    <div class="confirm-msg" id="confirmMsg"></div>
-    <div class="confirm-acts">
-      <button class="btn btn-ghost" id="confirmCancelBtn">Cancelar</button>
-      <button class="btn btn-primary" id="confirmOkBtn">Eliminar</button>
-    </div>
-  </div>
-</div>
 
 <!-- ===== TOAST CONTAINER ===== -->
 <div class="toast-container" id="toastContainer"></div>
@@ -1102,9 +728,8 @@ const StorageService = (() => {
     saveProfile: (p) => put(STORE_PROFILES, p),
     getProfile: (id) => get(STORE_PROFILES, id),
     getAllProfiles: () => getAll(STORE_PROFILES),
-    addHistory: (c) => put(STORE_HISTORY, { url: c.url, name: c.name, group: c.group, logo: c.logo, _type: c._type || 'general', _position: c._position || 0, _duration: c._duration || 0, watchedAt: Date.now() }),
+    addHistory: (c) => put(STORE_HISTORY, { url: c.url, name: c.name, group: c.group, logo: c.logo, watchedAt: Date.now() }),
     getHistory: () => getAll(STORE_HISTORY),
-    removeHistory: (url) => del(STORE_HISTORY, url),
     clearHistory: () => {
       return transaction(STORE_HISTORY, 'readwrite').then(store => {
         return new Promise((resolve, reject) => {
@@ -1140,17 +765,17 @@ const M3UParser = (() => {
     );
 
     // Series
-    if (/(^|\s)(s\d{1,2}\s*e\d{1,3}|season\s*\d+|temporada\s*\d+|episod(?:io|ios)?|series|serie|tv series|tv shows|shows|seriado|seriados|telenovela|novelas|miniserie|mini serie|anime)(\s|$)/.test(combined)) {
+    if (/(^|\\s)(s\\d{1,2}\\s*e\\d{1,3}|season\\s*\\d+|temporada\\s*\\d+|episod(?:io|ios)?|series|serie|tv series|tv shows|shows|seriado|seriados|telenovela|novelas|miniserie|mini serie|anime)(\\s|$)/.test(combined)) {
       return 'series';
     }
 
     // Películas / VOD
-    if (/(^|\s)(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largometraje|cortometraje)(\s|$)/.test(combined)) {
+    if (/(^|\\s)(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largometraje|cortometraje)(\\s|$)/.test(combined)) {
       return 'pelicula';
     }
 
     // TV en vivo
-    if (/(^|\s)(en vivo|envivo|live|directo|canales|canal|channel|channels|tv en vivo|streaming|stream|radio|tv live|live tv|en directo|news|noticias|deportes|sports)(\s|$)/.test(combined)) {
+    if (/(^|\\s)(en vivo|envivo|live|directo|canales|canal|channel|channels|tv en vivo|streaming|stream|radio|tv live|live tv|en directo|news|noticias|deportes|sports)(\\s|$)/.test(combined)) {
       return 'envivo';
     }
 
@@ -1193,371 +818,347 @@ const M3UParser = (() => {
 const PlayerService = (() => {
   let hls = null;
   let currentChannel = null;
-  let mode = 'idle';
-  let watchdog = null;
-  let reconnecting = false;
-  let starting = false;
-  let lastFragAt = 0;
-  let lastLevelAt = 0;
-  let lastMediaAdvanceAt = 0;
-  let lastMediaTime = -1;
-  let lastFragSequence = null;
-  let lastFragEnd = 0;
-  let wakeLock = null;
+  let retryCount = 0;
+  const MAX_RETRIES = 6;
+  let abortController = null;
+  let screenWakeLock = null;
   let wakeLockWanted = false;
-  let liveSourceUrl = '';
 
-  const LIVE = Object.freeze({
-    initialLiveManifestSize: 1,
-
-    // Keep several live fragments ahead without forcing a huge latency.
-    maxBufferLength: 18,
-    maxMaxBufferLength: 32,
-
-    // These are monitoring thresholds, not a command to stop/restart loading.
-    preferredBufferSeconds: 10,
-    criticalBufferSeconds: 2,
-
-    // Give the HLS loader time to fetch the next fragments before reconnecting.
-    segmentTimeoutMs: 9000,
-    levelTimeoutMs: 11000,
-    startupGraceMs: 7000,
-
-    // The player should normally have at least this many fragments between
-    // the playhead and the newest loaded fragment when the source exposes them.
-    preferredFragmentsAhead: 3,
-    minimumFragmentsAhead: 2,
-
-    reconnectDelayMs: 600
-  });
-
-  function clearWatchdog() {
-    if (watchdog) clearInterval(watchdog);
-    watchdog = null;
-  }
-
-  function destroyHls() {
-    if (!hls) return;
-    try { hls.stopLoad(); } catch {}
-    try { hls.detachMedia(); } catch {}
-    try { hls.destroy(); } catch {}
-    hls = null;
-  }
-
-  async function requestWakeLock() {
+  async function requestScreenWakeLock() {
     wakeLockWanted = true;
     if (!('wakeLock' in navigator)) return;
     try {
-      if (wakeLock && !wakeLock.released) return;
-      wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener?.('release', () => {
-        wakeLock = null;
+      if (screenWakeLock && !screenWakeLock.released) return;
+      screenWakeLock = await navigator.wakeLock.request('screen');
+      screenWakeLock.addEventListener?.('release', () => {
+        screenWakeLock = null;
         if (wakeLockWanted && document.visibilityState === 'visible') {
-          setTimeout(requestWakeLock, 300);
+          setTimeout(() => requestScreenWakeLock(), 300);
         }
       });
     } catch {}
   }
 
-  async function releaseWakeLock() {
+  async function releaseScreenWakeLock() {
     wakeLockWanted = false;
-    try { await wakeLock?.release(); } catch {}
-    wakeLock = null;
+    try { await screenWakeLock?.release(); } catch {}
+    screenWakeLock = null;
   }
 
-  async function getStreamUrl(sourceUrl) {
-    try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 900);
-      const r = await fetch(
-        'http://127.0.0.1:8765/health',
-        { cache: 'no-store', signal: ctl.signal }
-      );
-      clearTimeout(timer);
-      if (r.ok) {
-        return 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(sourceUrl);
-      }
-    } catch {}
-    return sourceUrl;
+
+  let liveCleanup = null;
+
+  function clearLiveGuards(videoElement) {
+    if (typeof liveCleanup === 'function') {
+      try { liveCleanup(); } catch {}
+    }
+    liveCleanup = null;
+    if (videoElement) videoElement.controls = true;
   }
 
-  function isLiveLikeUrl(url) {
-    const s = String(url || '');
-    return /\/live(?:\/|$)/i.test(s) ||
-      /\.m3u8?(?:$|[?#])/i.test(s) ||
-      /\.m3u(?:$|[?#])/i.test(s) ||
-      /[?&](?:type|format|output)=m3u8\b/i.test(s) ||
-      /\/(?:hls|hls_live)\//i.test(s);
+  function destroyHls() {
+    if (hls) { hls.destroy(); hls = null; }
+  }
+
+  function isHlsUrl(url) {
+    return /\.m3u8(?:$|[?#])/i.test(url) ||
+           /\.m3u(?:$|[?#])/i.test(url) ||
+           /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
+           /\/(?:hls|hls_live|live)\//i.test(url);
   }
 
   function isNativeMediaUrl(url) {
-    const s = String(url || '');
-    return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(s) ||
-      /[?&](?:type|format|output)=mp4\b/i.test(s) ||
-      /\/movie(?:\/|$)/i.test(s);
+    return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(url) ||
+           /[?&](?:type|format|output)=mp4\b/i.test(url) ||
+           /\/movie(?:\/|$)/i.test(url);
   }
 
-  async function reconnectLive(video, status, error, reason = 'buffer agotado') {
-    if (mode !== 'live' || reconnecting || !liveSourceUrl) return;
+  async function fetchWithTimeout(url, timeout = 60000) {
+    abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), timeout);
+    try {
+      const resp = await fetch(url, { signal: abortController.signal, mode: 'cors', cache: 'no-store' });
+      clearTimeout(timeoutId);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.text();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  }
 
-    reconnecting = true;
-    starting = true;
-    status(`LIVE · reconectando · ${reason}...`, 'err');
+  async function play(channel, videoElement, statusCallback, errorCallback) {
+    if (!videoElement) return;
+    currentChannel = channel;
+    retryCount = 0;
+    document.getElementById('playerFs')?.classList.remove('native-vod');
+    clearLiveGuards(videoElement);
+    destroyHls();
+    videoElement.pause();
+    videoElement.removeAttribute('src');
+    videoElement.load();
+    statusCallback('Preparando...');
 
-    const old = hls;
-    hls = null;
+    const url = channel.url;
+    // Algunas fuentes HLS no terminan en .m3u8 (redirecciones, tokens,
+    // proxys o URLs dinámicas). Por eso la decisión no puede depender
+    // únicamente de la extensión.
+    const isExplicitHls = isHlsUrl(url);
+    const isNativeMedia = isNativeMediaUrl(url);
+    let playUrl = url;
 
-    if (old) {
-      try { old.stopLoad(); } catch {}
-      try { old.detachMedia(); } catch {}
-      try { old.destroy(); } catch {}
+    // VOD/archivos directos NO pasan por Termux /stream ni HLS.js.
+    // Esto cubre MP4 de /movie/..., además de M4V/WebM/MOV/OGV.
+    if (isNativeMedia) {
+      document.getElementById('playerFs')?.classList.add('native-vod');
+      statusCallback('Abriendo vídeo...');
+      videoElement.controls = true;
+      videoElement.src = playUrl;
+      videoElement.load();
+      requestScreenWakeLock();
+      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+      return;
     }
 
+    // Termux queda disponible para los streams LIVE/HLS, que es donde
+    // ya comprobamos que el HTML funcional lo utilizaba.
     try {
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
+      const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 500);
+      if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
     } catch {}
 
-    await new Promise(r => setTimeout(r, LIVE.reconnectDelayMs));
-
-    if (mode !== 'live') {
-      reconnecting = false;
-      starting = false;
-      return;
-    }
-
     try {
-      await createLive(video, liveSourceUrl, status, error, true);
-    } catch {
-      status('LIVE · no se pudo reconectar', 'err');
-    }
+      // Preferimos HLS.js para HLS explícito y también hacemos un intento
+      // controlado para URLs de streaming sin extensión .m3u8. Si no son HLS,
+      // el fallback nativo se activa automáticamente. Esto evita el caso en
+      // que Chrome reproduzca solo el audio porque la URL HLS fue detectada
+      // como una fuente de vídeo normal.
+      const canUseHls = window.Hls && Hls.isSupported();
+      const shouldTryHls = canUseHls && (isExplicitHls || /^(https?:)?\/\//i.test(playUrl));
+      if (shouldTryHls) {
+        statusCallback(isExplicitHls ? 'Conectando HLS...' : 'Detectando transmisión...');
+        hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          maxBufferLength: 10,
+          maxMaxBufferLength: 20,
+          backBufferLength: 0,
+          liveDurationInfinity: true,
+          capLevelToPlayerSize: true,
+          manifestLoadingMaxRetry: 5,
+          levelLoadingMaxRetry: 5,
+          fragLoadingMaxRetry: 5,
+          fragLoadingRetryDelay: 1000,
+          startFragPrefetch: true,
+          abrEwmaDefaultEstimate: 1e6,
+        });
 
-    reconnecting = false;
-  }
+        // LIVE SIN DVR: una sola implementación. PiP/fullscreen quedan intactos.
+        let liveNoDvr = false;
+        let liveNoDvrBusy = false;
+        let liveSeekingHandler = null;
+        let liveStallTimer = null;
+        let lastLiveTime = -1;
+        let lastLiveAdvanceAt = Date.now();
 
-  async function createLive(video, sourceUrl, status, error, isReconnect = false) {
-    if (mode !== 'live') return;
+        const enableLiveNoDvr = () => {
+          if (liveNoDvr) return;
+          liveNoDvr = true;
+          videoElement.controls = false;
 
-    const playUrl = await getStreamUrl(sourceUrl);
-    if (mode !== 'live') return;
+          liveSeekingHandler = () => {
+            if (!liveNoDvr || liveNoDvrBusy || !hls || hls.destroyed) return;
+            const livePos = hls.liveSyncPosition;
+            if (!Number.isFinite(livePos)) return;
 
-    const instance = new Hls({
-      enableWorker: true,
-      lowLatencyMode: false,
+            // Solo corrige una petición explícita de seek; no mueve el playhead
+            // mientras el LIVE avanza normalmente.
+            liveNoDvrBusy = true;
+            try { videoElement.currentTime = livePos; } catch {}
+            setTimeout(() => { liveNoDvrBusy = false; }, 50);
+          };
+          videoElement.addEventListener('seeking', liveSeekingHandler);
 
-      // Start from the current live manifest.
-      initialLiveManifestSize: LIVE.initialLiveManifestSize,
+          // Sincronización inicial al punto LIVE.
+          try {
+            const livePos = hls.liveSyncPosition;
+            if (Number.isFinite(livePos)) videoElement.currentTime = livePos;
+          } catch {}
 
-      // HLS.js keeps requesting fragments as needed to maintain this window.
-      maxBufferLength: LIVE.maxBufferLength,
-      maxMaxBufferLength: LIVE.maxMaxBufferLength,
-      backBufferLength: 0,
+          lastLiveTime = videoElement.currentTime || 0;
+          lastLiveAdvanceAt = Date.now();
 
-      liveDurationInfinity: true,
-      capLevelToPlayerSize: true,
+          liveStallTimer = setInterval(() => {
+            if (!liveNoDvr || !hls || hls.destroyed || videoElement.paused) return;
 
-      manifestLoadingMaxRetry: 5,
-      levelLoadingMaxRetry: 5,
-      fragLoadingMaxRetry: 5,
-      fragLoadingRetryDelay: 600,
-      startFragPrefetch: true,
+            const now = Date.now();
+            const t = videoElement.currentTime || 0;
 
-      abrEwmaDefaultEstimate: 1000000
-    });
+            if (t > lastLiveTime + 0.15) {
+              lastLiveTime = t;
+              lastLiveAdvanceAt = now;
+              return;
+            }
 
-    hls = instance;
-    starting = true;
-    lastFragAt = Date.now();
-    lastLevelAt = Date.now();
-    lastMediaAdvanceAt = Date.now();
-    lastMediaTime = -1;
-    lastFragSequence = null;
-    lastFragEnd = 0;
+            // Recuperación suave si el LIVE realmente dejó de avanzar.
+            if (now - lastLiveAdvanceAt >= 12000 && !liveNoDvrBusy) {
+              liveNoDvrBusy = true;
+              statusCallback('Señal LIVE detenida; recuperando...', 'err');
+              try { hls.startLoad(-1); } catch {}
+              lastLiveAdvanceAt = now;
+              setTimeout(() => { liveNoDvrBusy = false; }, 1800);
+            }
+          }, 2000);
 
-    instance.on(Hls.Events.MEDIA_ATTACHED, () => {
-      if (mode === 'live' && hls === instance) {
-        instance.loadSource(playUrl);
-      }
-    });
+          statusCallback('HLS en vivo · sin DVR', 'ok');
+        };
 
-    instance.on(Hls.Events.MANIFEST_PARSED, () => {
-      if (mode !== 'live' || hls !== instance) return;
+        const disableLiveNoDvr = () => {
+          if (liveStallTimer) clearInterval(liveStallTimer);
+          liveStallTimer = null;
 
-      setTimeout(() => {
-        if (mode !== 'live' || hls !== instance) return;
-        video.play().catch(() => status('LIVE · pulsa ▶ para iniciar'));
-      }, 100);
+          if (liveSeekingHandler) {
+            try { videoElement.removeEventListener('seeking', liveSeekingHandler); } catch {}
+          }
+          liveSeekingHandler = null;
+          liveNoDvr = false;
+          liveNoDvrBusy = false;
+          lastLiveTime = -1;
+          lastLiveAdvanceAt = 0;
+          videoElement.controls = true;
+        };
 
-      status(
-        isReconnect ? 'LIVE · señal recuperada...' : 'LIVE · descargando segmentos...',
-        'ok'
-      );
-    });
+        // Exponer solo la limpieza de esta reproducción al servicio global.
+        liveCleanup = disableLiveNoDvr;
 
-    instance.on(Hls.Events.LEVEL_LOADED, (_, data) => {
-      if (mode !== 'live' || hls !== instance) return;
-      lastLevelAt = Date.now();
+        hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+          if (data?.details?.live) enableLiveNoDvr();
+        });
 
-      // Record the latest playlist details for diagnostics only.
-      if (data?.details?.fragments?.length) {
-        const fragments = data.details.fragments;
-        const last = fragments[fragments.length - 1];
-        if (last) {
-          lastFragEnd = Number(last.duration) || lastFragEnd || 4;
+        hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          requestScreenWakeLock();
+          statusCallback('HLS listo. Reproduciendo...', 'ok');
+          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+        });
+
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          if (!data.fatal) return;
+
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            statusCallback('Error de red. Reintentando...', 'err');
+            if (retryCount < MAX_RETRIES) {
+              retryCount++;
+              setTimeout(() => {
+                if (hls && !hls.destroyed) hls.startLoad(-1);
+              }, Math.min(8000, 1000 * retryCount));
+            } else if (!isExplicitHls) {
+              // Si la URL no parecía HLS, damos una oportunidad al reproductor
+              // nativo; puede ser MP4/TS u otro formato compatible.
+              fallbackToNative();
+            } else {
+              errorCallback('No se pudo conectar después de varios intentos.');
+            }
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            statusCallback('Recuperando vídeo...', 'err');
+            try {
+              if (hls && !hls.destroyed) hls.recoverMediaError();
+            } catch {}
+          } else {
+            if (!isExplicitHls) {
+              fallbackToNative();
+            } else {
+              const detail = String(data.details || '');
+              if (/CODECS|INCOMPATIBLE|BUFFER/i.test(detail)) {
+                errorCallback('El vídeo usa un códec o formato no compatible con este dispositivo.');
+              } else {
+                errorCallback('El formato de vídeo no es compatible o la fuente está dañada.');
+              }
+            }
+          }
+        });
+
+        function fallbackToNative() {
+          if (hls && !hls.destroyed) hls.destroy();
+          hls = null;
+          retryCount = 0;
+          if (liveSeekingHandler) {
+            videoElement.removeEventListener('seeking', liveSeekingHandler);
+          }
+          liveSeekingHandler = null;
+          liveNoDvr = false;
+          liveNoDvrBusy = false;
+          videoElement.controls = true;
+          statusCallback('Probando reproductor nativo...');
+          videoElement.pause();
+          videoElement.removeAttribute('src');
+          videoElement.load();
+          videoElement.src = playUrl;
+          videoElement.load();
+          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
         }
-      }
-    });
 
-    instance.on(Hls.Events.FRAG_LOADED, (_, data) => {
-      if (mode !== 'live' || hls !== instance) return;
-
-      lastFragAt = Date.now();
-      lastLevelAt = Date.now();
-
-      const frag = data?.frag;
-      if (frag) {
-        if (Number.isFinite(frag.sn)) lastFragSequence = frag.sn;
-        if (Number.isFinite(frag.duration) && frag.duration > 0) {
-          lastFragEnd = frag.duration;
-        }
-      }
-
-      updateSegmentDiagnostics(video);
-    });
-
-    instance.on(Hls.Events.ERROR, (_, data) => {
-      if (mode !== 'live' || hls !== instance || !data?.fatal) return;
-
-      // A buffered cushion absorbs transient network errors.
-      if (bufferAhead(video) > LIVE.criticalBufferSeconds) {
-        status('LIVE · protegiendo buffer...', 'ok');
-        return;
-      }
-
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-        reconnectLive(video, status, error, 'red');
-      } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-        reconnectLive(video, status, error, 'media');
+        // Detecta el caso concreto: el audio avanza pero no aparecen cuadros
+        // de vídeo. No usamos loadedmetadata para cancelar el diagnóstico porque
+        // ese evento también puede ocurrir cuando solo existe una pista de audio.
+        let watchdogDone = false;
+        let videoWatchdog = null;
+        const clearVideoWatchdog = () => {
+          if (watchdogDone) return;
+          watchdogDone = true;
+          if (videoWatchdog) {
+            clearInterval(videoWatchdog);
+            videoWatchdog = null;
+          }
+        };
+        const checkVideoTrack = () => {
+          if (watchdogDone || !videoElement) return;
+          if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+            clearVideoWatchdog();
+            return;
+          }
+          if (!hls || hls.destroyed) return;
+          if (!videoElement.paused && videoElement.currentTime > 0) {
+            statusCallback('Audio detectado; recuperando vídeo...', 'err');
+            try {
+              hls.recoverMediaError();
+              hls.startLoad(-1);
+            } catch {}
+          }
+        };
+        videoElement.addEventListener('loadeddata', checkVideoTrack);
+        videoElement.addEventListener('playing', checkVideoTrack);
+        videoElement.addEventListener('resize', checkVideoTrack);
+        videoWatchdog = setInterval(checkVideoTrack, 2500);
+        setTimeout(clearVideoWatchdog, 12000);
+        hls.attachMedia(videoElement);
       } else {
-        reconnectLive(video, status, error, 'fatal');
+        statusCallback('Abriendo vídeo...');
+        videoElement.src = playUrl;
+        videoElement.load();
+        videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
       }
-    });
-
-    instance.attachMedia(video);
-
-    setTimeout(() => {
-      if (mode === 'live' && hls === instance) {
-        starting = false;
-      }
-    }, LIVE.startupGraceMs);
-  }
-
-  async function play(channel, video, status, error) {
-    stop(video);
-    currentChannel = channel;
-    if (!channel?.url || !video) return;
-
-    const sourceUrl = String(channel.url);
-
-    // VOD/MP4 remains unchanged.
-    if (isNativeMediaUrl(sourceUrl) && !isLiveLikeUrl(sourceUrl)) {
-      mode = 'vod';
-      liveSourceUrl = '';
-
-      try {
-        video.preload = 'auto';
-        video.src = sourceUrl;
-        video.load();
-        await requestWakeLock();
-        video.play().catch(() => status('VOD · pulsa ▶ para iniciar'));
-      } catch {
-        status('VOD · no se pudo iniciar', 'err');
-      }
-      return;
-    }
-
-    // Dedicated LIVE path for /live/...m3u/.m3u8.
-    if (isLiveLikeUrl(sourceUrl) || !isNativeMediaUrl(sourceUrl)) {
-      mode = 'live';
-      liveSourceUrl = sourceUrl;
-
-      if (!window.Hls || !Hls.isSupported()) {
-        error('HLS.js no está disponible.');
-        return;
-      }
-
-      clearWatchdog();
-      await requestWakeLock();
-      await createLive(video, liveSourceUrl, status, error, false);
-      watchdog = setInterval(() => {
-        if (mode !== 'live' || !hls || hls.destroyed || reconnecting) return;
-
-        const now = Date.now();
-
-        if (Number.isFinite(video.currentTime) &&
-            video.currentTime > lastMediaTime + 0.12) {
-          lastMediaTime = video.currentTime;
-          lastMediaAdvanceAt = now;
-        }
-
-        const noMediaProgress =
-          now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs * 2;
-        const noFragments =
-          now - lastFragAt >= LIVE.segmentTimeoutMs * 2;
-        const noLevels =
-          now - lastLevelAt >= LIVE.levelTimeoutMs * 2;
-
-        if (!starting && !video.paused && noMediaProgress && noFragments && noLevels) {
-          reconnectLive(video, status, error, 'señal perdida');
-        }
-      }, 1000);
-
-      return;
-    }
-
-    mode = 'vod';
-    liveSourceUrl = '';
-    try {
-      video.preload = 'auto';
-      video.src = sourceUrl;
-      video.load();
-      await requestWakeLock();
-      video.play().catch(() => status('Pulsa ▶ para iniciar'));
-    } catch {
-      status('No se pudo iniciar el contenido', 'err');
+    } catch (err) {
+      errorCallback('Error al iniciar: ' + err.message);
     }
   }
 
-  function stop(video) {
-    mode = 'idle';
-    reconnecting = false;
-    starting = false;
-    liveSourceUrl = '';
-    clearWatchdog();
+  function stop(videoElement) {
+    clearLiveGuards(videoElement);
+    releaseScreenWakeLock();
+    document.getElementById('playerFs')?.classList.remove('native-vod');
     destroyHls();
-    releaseWakeLock();
-
-    if (video) {
-      try { video.pause(); } catch {}
-      try { video.removeAttribute('src'); video.load(); } catch {}
-      try { video.preload = 'metadata'; } catch {}
-      video.controls = false;
-      delete video.dataset.bufferAhead;
-      delete video.dataset.fragmentsAhead;
-      delete video.dataset.lastFragSequence;
+    if (videoElement) {
+      videoElement.pause();
+      videoElement.removeAttribute('src');
+      videoElement.load();
     }
-
     currentChannel = null;
+    if (abortController) { abortController.abort(); abortController = null; }
   }
 
-  return {
-    play,
-    stop,
-    getCurrentChannel: () => currentChannel,
-    isHlsUrl: isLiveLikeUrl,
-    _getHls: () => hls
-  };
+  function getCurrentChannel() { return currentChannel; }
+return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -1569,9 +1170,6 @@ const App = (() => {
   let favorites = [];
   let history = [];
   let currentListMeta = { id: null, name: '', url: '', method: '', proxy: '', updatedAt: 0 };
-  let activeView = null;
-  let viewHistoryActive = false;
-  const VIEW_IDS = ['viewExplore','viewLive','viewMovies','viewSeries','viewMyList','viewHistory','viewSettings','viewTermux'];
   let activeProfile = { name: 'Usuario 1', emoji: '🎭', bg: 'linear-gradient(135deg,#E50914,#8b0000)' };
   let curChannel = null;
   let rowObserver = null;
@@ -1742,14 +1340,7 @@ const App = (() => {
     const trk = sec.querySelector('.car-track');
     sec.querySelector('.lft').addEventListener('click', () => scrollTrack(trk, -1));
     sec.querySelector('.rgt').addEventListener('click', () => scrollTrack(trk, 1));
-    const rowExp = sec.querySelector('.row-exp');
-    if (rowExp) {
-      rowExp.style.cursor = 'pointer';
-      rowExp.addEventListener('click', () => {
-        const filterMap = { peliculas: 'pelicula', series: 'series', envivo: 'envivo' };
-        showView('explore', { filter: filterMap[sectionKey] || 'all' });
-      });
-    }
+
     renderMoreCards(sec);
     return sec;
   }
@@ -2020,7 +1611,7 @@ const App = (() => {
     top.classList.remove('player-idle');
     controls.classList.remove('player-idle');
     clearTimeout(playerHideTimer);
-    if (autoHide) playerHideTimer = setTimeout(() => hidePlayerUI(), 5000);
+    if (autoHide) playerHideTimer = setTimeout(() => hidePlayerUI(), 2600);
   }
 
   function hidePlayerUI() {
@@ -2030,8 +1621,8 @@ const App = (() => {
     if (!fs || !top || !controls) return;
     if (document.querySelector('.player-options.open')) return;
     top.classList.add('player-idle');
-    controls.classList.remove('player-idle');
-    fs.classList.add('player-ui-visible');
+    controls.classList.add('player-idle');
+    fs.classList.remove('player-ui-visible');
   }
 
   function togglePlayerUI() {
@@ -2054,266 +1645,12 @@ const App = (() => {
     } catch {}
   }
 
-
-  // ── VOD · precarga y gestos (solo para películas/series) ──
-  const VodController = (() => {
-    let active = false;
-    let cleanup = null;
-    let hideTimer = null;
-    let feedbackTimer = null;
-    let lastGesture = 0;
-    let seekAccumulator = 0;
-    let prebufferTimer = null;
-
-    const STEP = 10;
-    const PREBUFFER_TARGET = 18;
-
-    function isVod(channel){
-      const t = String(channel?._type || channel?.type || '').toLowerCase();
-      if (t === 'pelicula' || t === 'pelicula' || t === 'movie' || t === 'vod') return true;
-      const u = String(channel?.url || '');
-      return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(u) ||
-             /\/movie(?:\/|$)/i.test(u);
-    }
-
-    function fmt(sec){
-      sec = Math.max(0, Math.floor(Number(sec) || 0));
-      const h = Math.floor(sec/3600);
-      const m = Math.floor((sec%3600)/60);
-      const s = sec%60;
-      return h
-        ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
-        : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    }
-
-    function showFeedback(text, kind){
-      const el = document.getElementById('vodSeekFeedback');
-      if (!el) return;
-      clearTimeout(feedbackTimer);
-      el.textContent = text;
-      el.classList.remove('show','forward','back');
-      el.classList.add(kind);
-      requestAnimationFrame(() => el.classList.add('show'));
-      feedbackTimer = setTimeout(() => el.classList.remove('show'), 650);
-    }
-
-    function bufferedAhead(video){
-      if (!video || !Number.isFinite(video.currentTime)) return 0;
-      const t = video.currentTime;
-      const ranges = video.buffered;
-      for(let i=0;i<ranges.length;i++){
-        const start=ranges.start(i), end=ranges.end(i);
-        if(t>=start-0.25 && t<=end+0.25) return Math.max(0, end-t);
-      }
-      return 0;
-    }
-
-    function startPrebufferWatch(video){
-      if(prebufferTimer) clearInterval(prebufferTimer);
-
-      prebufferTimer = setInterval(() => {
-        if(!active || !video || video.paused || video.ended) return;
-
-        // Do not force seek/reload. Only observe the buffer and expose a
-        // conservative "buffer ready" hint through a data attribute.
-        const ahead = bufferedAhead(video);
-        video.dataset.vodBuffer = String(Math.floor(ahead));
-
-        // Encourage the browser to keep the resource warm without changing
-        // playback position or creating a second network request.
-        if(ahead < PREBUFFER_TARGET && Number.isFinite(video.duration) &&
-           video.duration > video.currentTime + 1){
-          try { video.preload = 'auto'; } catch {}
-        }
-      }, 1200);
-    }
-
-    function seekBy(video, delta){
-      if(!active || !video || !Number.isFinite(video.currentTime) ||
-         !Number.isFinite(video.duration) || video.duration <= 0) return;
-
-      const from = video.currentTime;
-      const target = Math.max(0, Math.min(video.duration - 0.25, from + delta));
-      try{
-        video.currentTime = target;
-      }catch{
-        return;
-      }
-
-      const actual = target - from;
-      seekAccumulator += actual;
-
-      if(delta > 0){
-        showFeedback(`+${Math.round(Math.abs(actual || delta))}s  ⏩`, 'forward');
-      }else{
-        showFeedback(`↩ ${Math.round(Math.abs(actual || delta))}s`, 'back');
-      }
-
-      // A seek should not pause a healthy VOD.
-      if(video.paused && !video.ended){
-        video.play().catch(() => {});
-      }
-    }
-
-    function onTapLeft(e){
-      if(e.pointerType === 'mouse' && e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      seekBy(window.__dulcineaMainVideo, -STEP);
-    }
-
-    function onTapRight(e){
-      if(e.pointerType === 'mouse' && e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      seekBy(window.__dulcineaMainVideo, STEP);
-    }
-
-    function activate(video, channel){
-      deactivate();
-
-      if(!isVod(channel)) return false;
-
-      active = true;
-      window.__dulcineaMainVideo = video;
-
-      const layer = document.getElementById('vodGestureLayer');
-      const left = document.getElementById('vodZoneLeft');
-      const right = document.getElementById('vodZoneRight');
-      if(!layer || !left || !right) return false;
-
-      layer.classList.add('active');
-      layer.setAttribute('aria-hidden','false');
-
-      left.addEventListener('pointerup', onTapLeft);
-      right.addEventListener('pointerup', onTapRight);
-
-      // Do not use the player's global click handler for VOD gesture zones.
-      video.preload = 'auto';
-      startPrebufferWatch(video);
-
-      cleanup = () => {
-        active = false;
-        layer.classList.remove('active');
-        layer.setAttribute('aria-hidden','true');
-        left.removeEventListener('pointerup', onTapLeft);
-        right.removeEventListener('pointerup', onTapRight);
-        clearInterval(prebufferTimer);
-        prebufferTimer = null;
-        clearTimeout(feedbackTimer);
-        video.removeAttribute('data-vod-buffer');
-      };
-      return true;
-    }
-
-    function deactivate(){
-      if(cleanup){ try{cleanup();}catch{} }
-      cleanup = null;
-      active = false;
-      window.__dulcineaMainVideo = null;
-      const layer = document.getElementById('vodGestureLayer');
-      if(layer){
-        layer.classList.remove('active');
-        layer.setAttribute('aria-hidden','true');
-      }
-      clearInterval(prebufferTimer);
-      prebufferTimer = null;
-    }
-
-    return { activate, deactivate, isVod };
-  })();
-
   // ── Reproducción ──
-
-  // ── Controles inferiores persistentes ──
-  const PlayerControls = (() => {
-    let cleanup = null;
-
-    function fmt(sec){
-      sec=Math.max(0,Math.floor(Number(sec)||0));
-      const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
-      return h ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
-               : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    }
-
-    function setup(video, channel){
-      if(cleanup){try{cleanup()}catch{}}
-      cleanup=null;
-      const bar=$('#playerControls'), play=$('#pcPlay'), mute=$('#pcMute');
-      const seek=$('#pcSeek'), vol=$('#pcVolume'), cur=$('#pcCurrent'), dur=$('#pcDuration');
-      if(!bar||!play||!mute||!seek||!vol||!cur||!dur)return;
-
-      const live=!VodController.isVod(channel);
-      seek.disabled=live;
-      seek.style.opacity=live?'.35':'1';
-      dur.textContent=live?'LIVE':'00:00';
-      bar.classList.add('persistent-controls');
-      bar.classList.remove('player-idle');
-
-      const syncPlay=()=>play.textContent=video.paused?'▶':'❚❚';
-      const syncVol=()=>{
-        mute.textContent=(video.muted||video.volume===0)?'🔇':(video.volume<.5?'🔉':'🔊');
-        vol.value=video.muted?'0':String(video.volume);
-      };
-      const syncTime=()=>{
-        const t=Number.isFinite(video.currentTime)?video.currentTime:0;
-        cur.textContent=fmt(t);
-        if(!live&&Number.isFinite(video.duration)&&video.duration>0){
-          dur.textContent=fmt(video.duration);
-          seek.max=String(video.duration);
-          seek.value=String(Math.min(t,video.duration));
-        }
-      };
-
-      const onPlay=e=>{e.preventDefault();e.stopPropagation();video.paused?video.play().catch(()=>{}):video.pause()};
-      const onMute=e=>{e.preventDefault();e.stopPropagation();video.muted=!video.muted;syncVol()};
-      const onVol=e=>{e.stopPropagation();const v=Math.max(0,Math.min(1,Number(e.target.value)));video.volume=v;video.muted=v===0;syncVol()};
-      const onSeek=e=>{
-        e.stopPropagation();
-        if(live||!Number.isFinite(video.duration)||video.duration<=0)return;
-        try{video.currentTime=Math.max(0,Math.min(video.duration,Number(e.target.value)))}catch{}
-      };
-
-      play.addEventListener('click',onPlay);
-      mute.addEventListener('click',onMute);
-      vol.addEventListener('input',onVol);
-      seek.addEventListener('input',onSeek);
-      for(const el of [play,mute,vol,seek]) el.addEventListener('pointerdown',e=>e.stopPropagation());
-
-      video.addEventListener('play',syncPlay);
-      video.addEventListener('pause',syncPlay);
-      video.addEventListener('timeupdate',syncTime);
-      video.addEventListener('loadedmetadata',syncTime);
-      video.addEventListener('durationchange',syncTime);
-      video.addEventListener('volumechange',syncVol);
-
-      syncPlay();syncVol();syncTime();
-
-      cleanup=()=>{
-        play.removeEventListener('click',onPlay);
-        mute.removeEventListener('click',onMute);
-        vol.removeEventListener('input',onVol);
-        seek.removeEventListener('input',onSeek);
-        video.removeEventListener('play',syncPlay);
-        video.removeEventListener('pause',syncPlay);
-        video.removeEventListener('timeupdate',syncTime);
-        video.removeEventListener('loadedmetadata',syncTime);
-        video.removeEventListener('durationchange',syncTime);
-        video.removeEventListener('volumechange',syncVol);
-      };
-    }
-    return {setup,cleanup:()=>{if(cleanup){try{cleanup()}catch{}cleanup=null}}};
-  })();
-
   async function playChannel(c) {
     curChannel = c;
     await StorageService.addHistory(c);
     history = await StorageService.getHistory();
-    // Progress saver cleanup from previous channel
-    if (window._progressSaverClean) { window._progressSaverClean(); window._progressSaverClean = null; }
     const vid = $('#mainVid');
-    VodController.deactivate();
-
     const statusEl = $('#playerStatus');
     $('#playerName').textContent = c.name;
     $('#playerGrp').textContent = c.group || 'Sin categoría';
@@ -2347,23 +1684,6 @@ const App = (() => {
         toast('Error de reproducción: ' + errMsg, 'error');
       }
     );
-    PlayerControls.setup(vid, c);
-
-    VodController.activate(vid, c);
-
-    // Movie progress saving (not for LIVE)
-    if (c._type === 'pelicula') {
-      let _progTimer = null;
-      const _progSave = async () => {
-        try {
-          if (!vid || !vid.duration || vid.duration === Infinity || vid.currentTime < 5) return;
-          await StorageService.addHistory({ ...c, _position: vid.currentTime, _duration: vid.duration, watchedAt: Date.now() });
-        } catch {}
-      };
-      const _progHandler = () => { clearTimeout(_progTimer); _progTimer = setTimeout(_progSave, 8000); };
-      vid.addEventListener('timeupdate', _progHandler);
-      window._progressSaverClean = () => { clearTimeout(_progTimer); try { vid.removeEventListener('timeupdate', _progHandler); } catch {} };
-    }
   }
 
   async function lockLandscape() {
@@ -2470,8 +1790,6 @@ const App = (() => {
   }
 
   function stopPlayerInternal() {
-    if (typeof VodController !== 'undefined') VodController.deactivate();
-
     clearTimeout(playerHideTimer);
     closePlayerOptions();
     const vid = $('#mainVid');
@@ -2490,8 +1808,6 @@ const App = (() => {
   }
 
   function stopPlayer() {
-    if (typeof PlayerControls !== 'undefined') PlayerControls.cleanup();
-
     if (playerHistoryActive) {
       window.history.back();
       return;
@@ -2699,10 +2015,6 @@ const App = (() => {
       $('#optFullscreen').innerHTML = fs ? '↙&nbsp; Salir de pantalla completa' : '⛶&nbsp; Pantalla completa';
     });
     window.addEventListener('popstate', () => {
-      if (viewHistoryActive && activeView) {
-        hideAllViews();
-        return;
-      }
       if (playerHistoryActive && $('#playerFs').classList.contains('open')) {
         stopPlayerInternal();
         return;
@@ -2971,6 +2283,13 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
       const shell = $('#playerFs');
       if (!vid || !shell || !shell.classList.contains('open')) return;
       if (document.visibilityState === 'visible') {
+        try {
+          const h = PlayerService._getHls?.();
+          if (h && !h.destroyed) {
+            h.startLoad(-1);
+            if (vid.readyState < 3) h.recoverMediaError?.();
+          }
+        } catch {}
         if (pipWasActive && pipWasPlaying && vid.paused) {
           vid.play().catch(() => {});
         }
@@ -3012,34 +2331,12 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     $$('.bn-btn').forEach(b => {
       b.addEventListener('click', () => {
         const sec = b.dataset.bnav;
-        if (sec === 'inicio') {
-          hideAllViews();
-          $$('.bn-btn').forEach(x => x.classList.remove('active'));
-          b.classList.add('active');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-          return;
-        }
-        if (sec === 'explore') { showView('explore'); return; }
-        if (sec === 'live') { showView('live'); return; }
-        if (sec === 'mylist') { renderViewMyList().then(() => {}); showView('mylist'); return; }
-        if (sec === 'more') { openMorePanel(); return; }
+        if (sec === 'search') { openSearch(); return; }
+        if (sec === 'perfil') { openProfiles(); return; }
+        $$('.bn-btn').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        handleNavAction(sec);
       });
-    });
-    // More panel items
-    document.querySelectorAll('.more-item').forEach(btn => {
-      btn.addEventListener('click', () => {
-        closeMorePanel();
-        const action = btn.dataset.more;
-        if (action === 'history') showView('history');
-        else if (action === 'settings') showView('settings');
-        else if (action === 'update') updateCurrentList();
-        else if (action === 'termux') showView('termux');
-        else if (action === 'info') toast('IPTV Studio Dulcinea 2026 v2 · dulcinea.stream', 'info');
-      });
-    });
-    document.getElementById('morePanelBackdrop')?.addEventListener('click', closeMorePanel);
-    document.getElementById('confirmDialogBg')?.addEventListener('click', (e) => {
-      if (e.target === document.getElementById('confirmDialogBg')) document.getElementById('confirmDialogBg').classList.remove('open');
     });
 
     $('#profileTrigger').addEventListener('click', (e) => {
@@ -3174,465 +2471,6 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     const el = $('#dStatus');
     el.textContent = msg;
     el.className = 'dstatus' + (type ? ' ' + type : '');
-  }
-
-
-  // ═══════════════════════════════════════════════════
-  //  VIEW MANAGER
-  // ═══════════════════════════════════════════════════
-  function capFirst(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-
-  function showView(name, opts = {}) {
-    hideAllViews();
-    const el = document.getElementById('view' + capFirst(name));
-    if (!el) return;
-    activeView = name;
-    el.classList.add('open');
-    renderViewContent(name, opts);
-    $$('.bn-btn').forEach(b => {
-      b.classList.toggle('active',
-        (b.dataset.bnav === 'explore' && name === 'explore') ||
-        (b.dataset.bnav === 'live' && name === 'live') ||
-        (b.dataset.bnav === 'mylist' && (name === 'mylist' || name === 'history' || name === 'settings' || name === 'termux'))
-      );
-    });
-    if (!viewHistoryActive) {
-      viewHistoryActive = true;
-      window.history.pushState({ dulcinea: 'view', view: name }, '', window.location.href);
-    }
-  }
-
-  function hideAllViews() {
-    VIEW_IDS.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.classList.remove('open');
-    });
-    activeView = null;
-    viewHistoryActive = false;
-    $$('.bn-btn').forEach(b => b.classList.toggle('active', b.dataset.bnav === 'inicio'));
-  }
-
-  function renderViewContent(name, opts) {
-    switch(name) {
-      case 'explore': renderViewExplore(opts); break;
-      case 'live': renderViewLive(); break;
-      case 'mylist': renderViewMyList(); break;
-      case 'history': renderViewHistory(); break;
-      case 'settings': renderViewSettings(); break;
-      case 'termux': renderViewTermux(); break;
-    }
-  }
-
-  // ── More Panel ──
-  function openMorePanel() {
-    document.getElementById('morePanel')?.classList.add('open');
-    document.getElementById('morePanelBackdrop')?.classList.add('open');
-  }
-  function closeMorePanel() {
-    document.getElementById('morePanel')?.classList.remove('open');
-    document.getElementById('morePanelBackdrop')?.classList.remove('open');
-  }
-
-  // ── Confirm Dialog ──
-  function showConfirm(title, msg, onConfirm) {
-    const bg = document.getElementById('confirmDialogBg');
-    if (!bg) return;
-    document.getElementById('confirmTitle').textContent = title;
-    document.getElementById('confirmMsg').textContent = msg;
-    bg.classList.add('open');
-    document.getElementById('confirmOkBtn').onclick = () => { bg.classList.remove('open'); onConfirm(); };
-    document.getElementById('confirmCancelBtn').onclick = () => bg.classList.remove('open');
-  }
-
-  // ── Series name extraction ──
-  function extractSeriesName(name) {
-    return (name || '')
-      .replace(/\s*[-–_|]+\s*(S\d{1,2}\s*E\d{1,3}|[Ss]eason\s*\d+|[Tt]emporada\s*\d+|[Ee]p(?:isode|isodio)?\s*\d+|[Ee]\d{1,3}(\s|$)).*$/i, '')
-      .replace(/[-_.\s|]+$/, '')
-      .trim() || name;
-  }
-
-  // ── Termux status check ──
-  async function checkTermuxStatus() {
-    const card = document.getElementById('termuxStatusCard');
-    if (!card) return;
-    card.innerHTML = '<div class="termux-checking"><div class="spinner"></div><span>Verificando conexión…</span></div>';
-    try {
-      const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 3000);
-      const resp = await fetch('http://127.0.0.1:8765/health', { signal: ctrl.signal, cache: 'no-store' });
-      clearTimeout(tid);
-      if (resp.ok) {
-        card.innerHTML = `
-          <div class="termux-ok">
-            <div class="termux-dot ok"></div>
-            <div>
-              <div class="termux-status-title">🟢 Termux conectado</div>
-              <div class="termux-status-sub">El proxy local está activo y listo para reproducir contenido.</div>
-            </div>
-          </div>
-          <div class="termux-info" style="margin-top:12px">Endpoint: <code>http://127.0.0.1:8765</code></div>`;
-      } else { throw new Error('HTTP ' + resp.status); }
-    } catch(e) {
-      card.innerHTML = `
-        <div class="termux-error">
-          <div class="termux-dot error"></div>
-          <div>
-            <div class="termux-status-title">🔴 Termux no disponible</div>
-            <div class="termux-status-sub">Termux debe estar activo para reproducir contenido en vivo y streams.</div>
-          </div>
-        </div>
-        <div class="termux-info" style="margin-top:12px">Para iniciar: abre Termux y ejecuta el script del servidor.</div>`;
-    }
-  }
-
-  // ── Actualizar lista actual ──
-  async function updateCurrentList() {
-    const sourceUrl = currentListMeta.url;
-    if (!sourceUrl) { toast('No hay lista con URL fuente para actualizar.', 'error'); return; }
-    toast('🔄 Actualizando lista…', 'info');
-    const errors = [];
-    async function tryFetch(label, url, timeout = 120000) {
-      try {
-        const resp = await fetch(url, { signal: AbortSignal.timeout(timeout), cache: 'no-store' });
-        if (!resp.ok) throw new Error(label + ': HTTP ' + resp.status);
-        const text = await resp.text();
-        const items = M3UParser.parse(text);
-        if (!items.length) throw new Error(label + ': sin entradas M3U');
-        return { items, method: label };
-      } catch(e) {
-        errors.push(e.message || String(e));
-        return null;
-      }
-    }
-    try {
-      let loaded = null;
-      if (currentListMeta.method === 'auto' || currentListMeta.method === 'Termux local') {
-        loaded = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 300000);
-      }
-      if (!loaded) loaded = await tryFetch('directo', sourceUrl, 120000);
-      if (!loaded) { toast('No se pudo actualizar la lista', 'error'); return; }
-      const fresh = loaded.items;
-      const updated = {
-        id: currentListMeta.id || ('list_' + Date.now()),
-        name: currentListMeta.name || 'Mi lista IPTV',
-        url: sourceUrl, method: loaded.method,
-        proxy: currentListMeta.proxy || '',
-        updatedAt: Date.now(),
-        channels: fresh.map(ch => ({ name: ch.name, group: ch.group, logo: ch.logo, id: ch.id, url: ch.url, tvgType: ch.tvgType, _type: ch._type }))
-      };
-      await StorageService.saveList(updated);
-      currentListMeta = { id: updated.id, name: updated.name, url: updated.url, method: updated.method, proxy: updated.proxy, updatedAt: updated.updatedAt };
-      localStorage.setItem('ds_last_saved_list', updated.id);
-      setChannels(fresh);
-      toast('✓ Lista actualizada: ' + fresh.length + ' elementos', 'success');
-    } catch(e) { toast('No se pudo actualizar: ' + e.message, 'error'); }
-  }
-
-  // ═══════════════════════════════════════════════════
-  //  RENDER: EXPLORAR
-  // ═══════════════════════════════════════════════════
-  function renderViewExplore(opts = {}) {
-    const el = document.getElementById('viewExplore');
-    if (!el) return;
-    const initFilter = opts.filter || 'all';
-    const typeLabels = { all: 'TODO', pelicula: 'PELÍCULAS', series: 'SERIES', envivo: 'EN VIVO' };
-    el.innerHTML = `
-      <div class="view-header">
-        <button class="view-back" id="exploreBack">←</button>
-        <h2 class="view-title">🔎 Explorar</h2>
-      </div>
-      <div class="explore-search-bar">
-        <span class="explore-si">🔍</span>
-        <input type="search" class="explore-input" id="exploreInput" placeholder="Buscar en el catálogo…" autocomplete="off" spellcheck="false">
-        <button class="explore-clear" id="exploreClear" style="display:none">✕</button>
-      </div>
-      <div class="filter-tabs" id="exploreFilterTabs">
-        ${['all','pelicula','series','envivo'].map(t=>`<button class="filter-tab${t===initFilter?' active':''}" data-filter="${t}">${typeLabels[t]}</button>`).join('')}
-      </div>
-      <div class="explore-sort-row">
-        <select class="explore-sort" id="exploreSort">
-          <option value="default">Más recientes</option>
-          <option value="az">A-Z</option>
-          <option value="za">Z-A</option>
-        </select>
-        <div class="explore-count" id="exploreCount"></div>
-      </div>
-      <div class="content-grid" id="exploreGrid"></div>
-    `;
-    let curFilter = initFilter, curSort = 'default', searchQ = '', explShown = 0;
-    const PAGE = 24;
-    function getFiltered() {
-      let items = channels.slice();
-      if (curFilter !== 'all') items = items.filter(ch => ch._type === curFilter);
-      if (searchQ) { const q = normalizeSearch(searchQ); items = items.filter(ch => normalizeSearch(ch.name).includes(q) || normalizeSearch(ch.group).includes(q)); }
-      if (curSort === 'az') items.sort((a,b) => a.name.localeCompare(b.name));
-      else if (curSort === 'za') items.sort((a,b) => b.name.localeCompare(a.name));
-      return items;
-    }
-    function renderGrid(reset = true) {
-      const grid = document.getElementById('exploreGrid');
-      const cnt  = document.getElementById('exploreCount');
-      if (!grid) return;
-      if (reset) { grid.innerHTML = ''; explShown = 0; }
-      grid.querySelectorAll('.explore-more-btn').forEach(e => e.remove());
-      const items = getFiltered();
-      if (cnt) cnt.textContent = items.length + ' resultados';
-      if (!items.length) { grid.innerHTML = '<div class="explore-empty">Sin resultados</div>'; return; }
-      const end = Math.min(explShown + PAGE, items.length);
-      const frag = document.createDocumentFragment();
-      for (let i = explShown; i < end; i++) frag.appendChild(buildCard(items[i]));
-      grid.appendChild(frag);
-      explShown = end;
-      if (end < items.length) {
-        const btn = document.createElement('button'); btn.type='button';
-        btn.className='row-more explore-more-btn'; btn.style.gridColumn='1/-1';
-        btn.textContent='＋ Mostrar más';
-        btn.addEventListener('click', () => renderGrid(false));
-        grid.appendChild(btn);
-      }
-    }
-    el.querySelectorAll('.filter-tab').forEach(btn => btn.addEventListener('click', () => {
-      curFilter = btn.dataset.filter;
-      el.querySelectorAll('.filter-tab').forEach(b => b.classList.toggle('active', b.dataset.filter === curFilter));
-      renderGrid();
-    }));
-    const sortEl = document.getElementById('exploreSort');
-    if (sortEl) sortEl.addEventListener('change', () => { curSort = sortEl.value; renderGrid(); });
-    const inp = document.getElementById('exploreInput');
-    const clr = document.getElementById('exploreClear');
-    if (inp) inp.addEventListener('input', () => {
-      clearTimeout(window._exTimer);
-      searchQ = inp.value;
-      if (clr) clr.style.display = searchQ ? 'block' : 'none';
-      window._exTimer = setTimeout(() => renderGrid(), 200);
-    });
-    if (clr) clr.addEventListener('click', () => { inp.value=''; searchQ=''; clr.style.display='none'; renderGrid(); inp.focus(); });
-    document.getElementById('exploreBack')?.addEventListener('click', () => hideAllViews());
-    if (!channels.length) { el.querySelector('.content-grid').innerHTML='<div class="view-empty" style="grid-column:1/-1"><div class="ei">📂</div><p>Carga una lista M3U primero.</p><button class="btn btn-primary" onclick="App.openDrawer()" style="margin-top:8px">📂 Cargar M3U</button></div>'; document.getElementById('exploreCount').textContent='0 resultados'; return; }
-    renderGrid();
-  }
-
-  // ═══════════════════════════════════════════════════
-  //  RENDER: EN VIVO
-  // ═══════════════════════════════════════════════════
-  function renderViewLive() {
-    const el = document.getElementById('viewLive');
-    if (!el) return;
-    const liveChans = channels.filter(ch => ch._type === 'envivo');
-    const liveGroups = {};
-    for (const ch of liveChans) { const g = ch.group||'Sin categoría'; if(!liveGroups[g]) liveGroups[g]=[]; liveGroups[g].push(ch); }
-    const sortedGrps = Object.keys(liveGroups).sort((a,b)=>a.localeCompare(b));
-    el.innerHTML = `
-      <div class="view-header">
-        <button class="view-back" id="liveBack">←</button>
-        <h2 class="view-title">🔴 En vivo</h2>
-        <span class="view-count">${liveChans.length}</span>
-      </div>
-      ${!liveChans.length ? '<div class="view-empty"><div class="ei">📡</div><p>No hay canales en vivo en la lista actual.</p></div>' : '<div id="liveGroupsCont"></div>'}
-    `;
-    if (!liveChans.length) return;
-    const cont = document.getElementById('liveGroupsCont');
-    for (const g of sortedGrps) {
-      const sec = document.createElement('div'); sec.className='live-group';
-      const hdr = document.createElement('div'); hdr.className='live-group-header';
-      hdr.innerHTML = `<span class="live-group-icon">${groupIcon(g)}</span><span class="live-group-name">${esc(g)}</span><span class="live-group-count">${liveGroups[g].length}</span>`;
-      const grid = document.createElement('div'); grid.className='content-grid live-grid';
-      const frag = document.createDocumentFragment();
-      for (const ch of liveGroups[g]) frag.appendChild(buildCard(ch));
-      grid.appendChild(frag);
-      sec.append(hdr, grid);
-      cont.appendChild(sec);
-    }
-    document.getElementById('liveBack')?.addEventListener('click', () => hideAllViews());
-  }
-
-  // ═══════════════════════════════════════════════════
-  //  RENDER: MI LISTA
-  // ═══════════════════════════════════════════════════
-  async function renderViewMyList() {
-    const el = document.getElementById('viewMyList');
-    if (!el) return;
-    try { favorites = await StorageService.getFavorites(); } catch {}
-    const map = { all: favorites, pelicula: [], series: [], envivo: [] };
-    for (const f of favorites) { const ch=channels.find(x=>x.url===f.url); const t=(ch&&ch._type)||'general'; if(map[t]) map[t].push(f); }
-    const tabs = [
-      {id:'all',label:'Todo',items:map.all},
-      {id:'pelicula',label:'🎬 Películas',items:map.pelicula},
-      {id:'series',label:'📺 Series',items:map.series},
-      {id:'envivo',label:'🔴 En vivo',items:map.envivo}
-    ];
-    el.innerHTML = `
-      <div class="view-header">
-        <button class="view-back" id="mylistBack">←</button>
-        <h2 class="view-title">❤️ Mi lista</h2>
-        <span class="view-count">${favorites.length}</span>
-      </div>
-      <div class="mylist-tabs">
-        ${tabs.map((t,i)=>`<button class="mylist-tab${i===0?' active':''}" data-tab="${t.id}">${t.label} <span class="tab-count">${t.items.length}</span></button>`).join('')}
-      </div>
-      <div class="content-grid" id="mylistGrid"></div>
-    `;
-    let curTab = 'all';
-    function renderMyGrid() {
-      const grid=document.getElementById('mylistGrid'); if(!grid) return;
-      grid.innerHTML='';
-      const tab=tabs.find(t=>t.id===curTab); const items=tab?tab.items:[];
-      if(!items.length){grid.innerHTML='<div class="view-empty-inline">Sin elementos en esta sección</div>';return;}
-      const frag=document.createDocumentFragment();
-      for(const f of items){const ch=channels.find(x=>x.url===f.url)||{...f,_type:'general'};frag.appendChild(buildCard(ch));}
-      grid.appendChild(frag);
-    }
-    el.querySelectorAll('.mylist-tab').forEach(btn=>btn.addEventListener('click',()=>{
-      curTab=btn.dataset.tab;
-      el.querySelectorAll('.mylist-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===curTab));
-      renderMyGrid();
-    }));
-    document.getElementById('mylistBack')?.addEventListener('click',()=>hideAllViews());
-    renderMyGrid();
-  }
-
-  // ═══════════════════════════════════════════════════
-  //  RENDER: HISTORIAL
-  // ═══════════════════════════════════════════════════
-  async function renderViewHistory() {
-    const el = document.getElementById('viewHistory');
-    if (!el) return;
-    try { history = await StorageService.getHistory(); } catch {}
-    const sorted = [...history].sort((a,b)=>(b.watchedAt||0)-(a.watchedAt||0));
-    el.innerHTML = `
-      <div class="view-header">
-        <button class="view-back" id="historyBack">←</button>
-        <h2 class="view-title">🕘 Historial</h2>
-        ${sorted.length?'<button class="view-action-btn" id="clearAllHistoryBtn">🗑 Borrar todo</button>':''}
-      </div>
-      <div id="historyList">
-        ${!sorted.length?'<div class="view-empty"><div class="ei">🕘</div><p>No hay historial de reproducción.</p></div>':''}
-      </div>
-    `;
-    const list = document.getElementById('historyList');
-    if (list && sorted.length) {
-      const frag = document.createDocumentFragment();
-      for (const h of sorted) frag.appendChild(buildHistoryItem(h));
-      list.appendChild(frag);
-    }
-    document.getElementById('historyBack')?.addEventListener('click',()=>hideAllViews());
-    document.getElementById('clearAllHistoryBtn')?.addEventListener('click',()=>showConfirm(
-      '¿Eliminar todo el historial?','¿Eliminar todo el historial?',
-      async()=>{ try{await StorageService.clearHistory();history=[];renderViewHistory();toast('Historial eliminado','info');}catch(e){toast('Error: '+e.message,'error');} }
-    ));
-  }
-
-  function buildHistoryItem(h) {
-    const div = document.createElement('div'); div.className='history-item';
-    const ts = h.watchedAt ? new Date(h.watchedAt).toLocaleString('es',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-    div.innerHTML=`
-      <div class="hi-thumb">${h.logo?`<img src="${esc(h.logo)}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=hi-fb>📺</div>'">`:'<div class="hi-fb">📺</div>'}</div>
-      <div class="hi-info">
-        <div class="hi-name">${esc(h.name||'Sin nombre')}</div>
-        <div class="hi-meta">${esc(h.group||'')}${ts?' · '+ts:''}</div>
-      </div>
-      <div class="hi-menu-wrap">
-        <button class="hi-menu-btn" aria-label="Opciones">⋮</button>
-        <div class="hi-menu" role="menu">
-          <button class="hi-menu-opt" data-action="play">▶ Reproducir</button>
-          <button class="hi-menu-opt" data-action="fav">❤️ Agregar a Mi lista</button>
-          <button class="hi-menu-opt danger" data-action="del">🗑 Eliminar</button>
-        </div>
-      </div>`;
-    const menuBtn=div.querySelector('.hi-menu-btn');
-    const menu=div.querySelector('.hi-menu');
-    menuBtn.addEventListener('click',e=>{
-      e.stopPropagation();
-      document.querySelectorAll('.hi-menu.open').forEach(m=>{if(m!==menu)m.classList.remove('open');});
-      menu.classList.toggle('open');
-    });
-    div.querySelectorAll('.hi-menu-opt').forEach(btn=>btn.addEventListener('click',async e=>{
-      e.stopPropagation(); menu.classList.remove('open');
-      const action=btn.dataset.action;
-      const ch=channels.find(x=>x.url===h.url)||{...h,_type:h._type||'general'};
-      if(action==='play') playChannel(ch);
-      else if(action==='fav') await toggleFavorite(ch,null);
-      else if(action==='del'){
-        try{
-          await StorageService.removeHistory(h.url);
-          history=history.filter(x=>x.url!==h.url);
-          div.remove();
-          const list=document.getElementById('historyList');
-          if(list&&!list.querySelector('.history-item')){
-            list.innerHTML='<div class="view-empty"><div class="ei">🕘</div><p>No hay historial de reproducción.</p></div>';
-            document.getElementById('clearAllHistoryBtn')?.remove();
-          }
-          toast('Eliminado del historial','info');
-        }catch(e2){toast('Error: '+e2.message,'error');}
-      }
-    }));
-    div.addEventListener('click',()=>{const ch=channels.find(x=>x.url===h.url)||{...h,_type:h._type||'general'};openDetail(ch);});
-    return div;
-  }
-
-  // ═══════════════════════════════════════════════════
-  //  RENDER: CONFIGURACIÓN
-  // ═══════════════════════════════════════════════════
-  function renderViewSettings() {
-    const el = document.getElementById('viewSettings');
-    if (!el) return;
-    el.innerHTML=`
-      <div class="view-header">
-        <button class="view-back" id="settingsBack">←</button>
-        <h2 class="view-title">⚙️ Configuración</h2>
-      </div>
-      <div class="settings-list">
-        <div class="settings-section">Listas M3U</div>
-        <button class="settings-item" id="setLoadM3u"><span class="settings-icon">📂</span><span>Cargar lista M3U</span></button>
-        <button class="settings-item" id="setSavedLists"><span class="settings-icon">💾</span><span>Listas guardadas</span></button>
-        <div class="settings-section">Reproducción</div>
-        <button class="settings-item" id="setTermuxStatus"><span class="settings-icon">📡</span><span>Estado de Termux</span></button>
-        <div class="settings-section">Datos</div>
-        <button class="settings-item danger" id="setClearHist"><span class="settings-icon">🗑</span><span>Borrar historial</span></button>
-      </div>
-    `;
-    document.getElementById('settingsBack')?.addEventListener('click',()=>hideAllViews());
-    document.getElementById('setLoadM3u')?.addEventListener('click',()=>{hideAllViews();openDrawer();});
-    document.getElementById('setSavedLists')?.addEventListener('click',()=>{hideAllViews();openProfiles();});
-    document.getElementById('setTermuxStatus')?.addEventListener('click',()=>showView('termux'));
-    document.getElementById('setClearHist')?.addEventListener('click',()=>showConfirm(
-      '¿Eliminar todo el historial?','¿Eliminar todo el historial?',
-      async()=>{ try{await StorageService.clearHistory();history=[];toast('Historial eliminado','info');}catch(e){toast('Error: '+e.message,'error');} }
-    ));
-  }
-
-  // ═══════════════════════════════════════════════════
-  //  RENDER: ESTADO TERMUX
-  // ═══════════════════════════════════════════════════
-  function renderViewTermux() {
-    const el = document.getElementById('viewTermux');
-    if (!el) return;
-    el.innerHTML=`
-      <div class="view-header">
-        <button class="view-back" id="termuxBack">←</button>
-        <h2 class="view-title">📡 Estado de Termux</h2>
-      </div>
-      <div class="termux-container">
-        <div class="termux-desc">Termux actúa como proxy local para reproducir streams IPTV. Debe estar activo para que el contenido en vivo funcione correctamente.</div>
-        <div class="termux-status-card" id="termuxStatusCard">
-          <div class="termux-checking"><div class="spinner"></div><span>Verificando…</span></div>
-        </div>
-        <button class="btn btn-secondary" id="termuxRecheck" style="margin-top:16px;width:100%">↻ Verificar de nuevo</button>
-        <div class="termux-help">
-          <div class="termux-help-title">¿Cómo iniciar Termux?</div>
-          <ol class="termux-help-list">
-            <li>Abre Termux en tu dispositivo Android</li>
-            <li>Ejecuta: <code>python server.py</code></li>
-            <li>Verifica que escucha en el puerto 8765</li>
-            <li>Pulsa "Verificar de nuevo" aquí</li>
-          </ol>
-        </div>
-      </div>
-    `;
-    document.getElementById('termuxBack')?.addEventListener('click',()=>hideAllViews());
-    document.getElementById('termuxRecheck')?.addEventListener('click',()=>checkTermuxStatus());
-    checkTermuxStatus();
   }
 
   return {
