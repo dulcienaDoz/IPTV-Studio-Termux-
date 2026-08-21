@@ -1128,12 +1128,10 @@ const PlayerService = (() => {
       backBufferLength:0,
       liveDurationInfinity:true,
       capLevelToPlayerSize:true,
-      manifestLoadingMaxRetry:3,
-      levelLoadingMaxRetry:3,
-      fragLoadingMaxRetry:3,
-      manifestLoadingRetryDelay:200,
-      levelLoadingRetryDelay:200,
-      fragLoadingRetryDelay:200,
+      manifestLoadingMaxRetry:4,
+      levelLoadingMaxRetry:4,
+      fragLoadingMaxRetry:4,
+      fragLoadingRetryDelay:1000,
       startFragPrefetch:true,
       abrEwmaDefaultEstimate:1000000
     });
@@ -1182,7 +1180,7 @@ const PlayerService = (() => {
       video.load();
     }catch{}
 
-    await new Promise(r=>setTimeout(r,100));
+    await new Promise(r=>setTimeout(r,250));
     if(mode==='live'){
       try{await createLive(video,sourceUrl,status,error);}
       catch{status('LIVE · no se pudo reconectar','err');}
@@ -1224,10 +1222,10 @@ const PlayerService = (() => {
         lastProgressAt=now;
         return;
       }
-      if(now-lastProgressAt>=1500&&video.readyState<3){
+      if(now-lastProgressAt>=3000&&video.readyState<3){
         reconnect(video,sourceUrl,status,error,'sin señal');
       }
-    },250);
+    },500);
   }
 
   function stop(video){
