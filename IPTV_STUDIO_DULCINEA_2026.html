@@ -1313,10 +1313,8 @@ const PlayerService = (() => {
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           requestScreenWakeLock();
           statusCallback('HLS listo. Reproduciendo...', 'ok');
-          // Autoplay con muted para evitar bloqueo
-          videoElement.muted = true;
+          // Intentar reproducir sin silenciar (el usuario ya hizo clic)
           videoElement.play().catch(() => {
-            videoElement.muted = false;
             statusCallback('Pulsa ▶ para iniciar', 'info');
           });
         });
@@ -1368,11 +1366,7 @@ const PlayerService = (() => {
           videoElement.load();
           videoElement.src = playUrl;
           videoElement.load();
-          videoElement.muted = true;
-          videoElement.play().catch(() => {
-            videoElement.muted = false;
-            statusCallback('Pulsa ▶ para iniciar', 'info');
-          });
+          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar', 'info'));
         }
 
         // Indicador de buffering
@@ -1425,11 +1419,7 @@ const PlayerService = (() => {
         statusCallback('Abriendo vídeo...');
         videoElement.src = playUrl;
         videoElement.load();
-        videoElement.muted = true;
-        videoElement.play().catch(() => {
-          videoElement.muted = false;
-          statusCallback('Pulsa ▶ para iniciar', 'info');
-        });
+        videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar', 'info'));
       }
     } catch (err) {
       errorCallback('Error al iniciar: ' + err.message);
