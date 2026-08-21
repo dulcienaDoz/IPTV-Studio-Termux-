@@ -1211,10 +1211,12 @@ const PlayerService = (() => {
     initialLiveManifestSize: 1,
 
     // Keep several live fragments ahead without forcing a huge latency.
-    maxBufferLength: 25,
-    maxMaxBufferLength: 45,
+    maxBufferLength: 18,
+    maxMaxBufferLength: 32,
 
     // These are monitoring thresholds, not a command to stop/restart loading.
+    preferredBufferSeconds: 10,
+    criticalBufferSeconds: 2,
 
     // Give the HLS loader time to fetch the next fragments before reconnecting.
     segmentTimeoutMs: 9000,
@@ -1223,6 +1225,8 @@ const PlayerService = (() => {
 
     // The player should normally have at least this many fragments between
     // the playhead and the newest loaded fragment when the source exposes them.
+    preferredFragmentsAhead: 3,
+    minimumFragmentsAhead: 2,
 
     reconnectDelayMs: 600
   });
@@ -1386,7 +1390,7 @@ const PlayerService = (() => {
       }, 100);
 
       status(
-        isReconnect ? 'LIVE · señal recuperada...' : 'LIVE · conectado...',
+        isReconnect ? 'LIVE · señal recuperada...' : 'LIVE · descargando segmentos...',
         'ok'
       );
     });
@@ -1490,14 +1494,13 @@ const PlayerService = (() => {
         if (mode !== 'live' || !hls || hls.destroyed || reconnecting) return;
 
         const now = Date.now();
+
         if (Number.isFinite(video.currentTime) &&
             video.currentTime > lastMediaTime + 0.12) {
           lastMediaTime = video.currentTime;
           lastMediaAdvanceAt = now;
         }
 
-        // No artificial buffer target: only reconnect after a real playback
-        // stall combined with a prolonged lack of playlist/fragment activity.
         const noMediaProgress =
           now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs * 2;
         const noFragments =
@@ -1540,6 +1543,9 @@ const PlayerService = (() => {
       try { video.removeAttribute('src'); video.load(); } catch {}
       try { video.preload = 'metadata'; } catch {}
       video.controls = false;
+      delete video.dataset.bufferAhead;
+      delete video.dataset.fragmentsAhead;
+      delete video.dataset.lastFragSequence;
     }
 
     currentChannel = null;
