@@ -1,5 +1,3 @@
-</body>
-</html>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -908,7 +906,6 @@ ul { list-style: none; }
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.2/dist/hls.min.js"></script>
 <script>
-
 // ═══════════════════════════════════════════════════
 //  SERVICIO DE ALMACENAMIENTO (IndexedDB)
 // ═══════════════════════════════════════════════════
@@ -1098,7 +1095,6 @@ const M3UParser = (() => {
 // ═══════════════════════════════════════════════════
 //  SERVICIO DE REPRODUCTOR (HLS + fallback mejorado)
 // ═══════════════════════════════════════════════════
-
 const PlayerService = (() => {
   let hls = null;
   let currentChannel = null;
@@ -1115,8 +1111,15 @@ const PlayerService = (() => {
   let vodRecoveryBusy = false;
   let vodRecoveryCount = 0;
   const VOD_MAX_RECOVERY = 8;
-  let liveRecoveryBusy = false;
 
+  let liveRecoveryBusy = false;
+  let liveRecoveryAttempts = 0;
+  const MAX_LIVE_RECOVERY = 4;
+
+  // ── Caché de Termux ──
+  let termuxStatus = { available: false, lastCheck: 0 };
+
+  // ── Funciones auxiliares ──
   function clearTimers() {
     if (liveTimer) clearInterval(liveTimer);
     if (vodTimer) clearInterval(vodTimer);
@@ -1164,6 +1167,7 @@ const PlayerService = (() => {
     vodRecoveryBusy = false;
     vodRecoveryCount = 0;
     liveRecoveryBusy = false;
+    liveRecoveryAttempts = 0;
 
     if (videoElement) videoElement.controls = false;
   }
@@ -1186,46 +1190,36 @@ const PlayerService = (() => {
            /\/movie(?:\/|$)/i.test(url);
   }
 
-  async function fetchWithTimeout(url, timeout = 1200) {
-    abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), timeout);
-
-    try {
-      const resp = await fetch(url, {
-        signal: abortController.signal,
-        mode: 'cors',
-        cache: 'no-store'
-      });
-      clearTimeout(timeoutId);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return await resp.text();
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
+  // ── resolvePlayUrl mejorado con caché ──
   async function resolvePlayUrl(sourceUrl) {
-    try {
-      const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 1200);
-      if (health) {
-        return 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(sourceUrl);
+    const now = Date.now();
+    if (now - termuxStatus.lastCheck > 10000) {
+      try {
+        const resp = await fetch('http://127.0.0.1:8765/health', {
+          signal: AbortSignal.timeout(800)
+        });
+        termuxStatus.available = resp.ok;
+      } catch {
+        termuxStatus.available = false;
       }
-    } catch {}
+      termuxStatus.lastCheck = now;
+    }
+    if (termuxStatus.available) {
+      return 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(sourceUrl);
+    }
     return sourceUrl;
   }
 
+  // ── recoverVod mejorado ──
   async function recoverVod(videoElement, sourceUrl, statusCallback) {
     if (mode !== MODE.VOD || vodRecoveryBusy || vodRecoveryCount >= VOD_MAX_RECOVERY) return;
 
     vodRecoveryBusy = true;
     vodRecoveryCount++;
 
-    const restoreTime = Number.isFinite(videoElement.currentTime)
-      ? videoElement.currentTime
-      : 0;
+    const restoreTime = Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0;
 
-    const wasEnded = videoElement.ended;
-    if (wasEnded) {
+    if (videoElement.ended || restoreTime === 0) {
       vodRecoveryBusy = false;
       return;
     }
@@ -1251,14 +1245,12 @@ const PlayerService = (() => {
 
         const resume = () => {
           if (mode !== MODE.VOD) return;
-
           try {
             if (restoreTime > 0 && Number.isFinite(videoElement.duration) && videoElement.duration > 0) {
               const safeTime = Math.min(restoreTime, Math.max(0, videoElement.duration - 0.5));
               videoElement.currentTime = safeTime;
             }
           } catch {}
-
           videoElement.play().catch(() => {});
           vodRecoveryBusy = false;
           statusCallback('VOD reconectado', 'ok');
@@ -1266,18 +1258,21 @@ const PlayerService = (() => {
 
         videoElement.addEventListener('loadedmetadata', resume, { once: true });
 
-        // Do not leave the player permanently locked if metadata never arrives.
         setTimeout(() => {
           if (mode === MODE.VOD && vodRecoveryBusy) {
             vodRecoveryBusy = false;
+            statusCallback('VOD: no se pudo recuperar', 'err');
           }
         }, 12000);
-      } catch {
+
+      } catch (err) {
         vodRecoveryBusy = false;
+        statusCallback('Error al recuperar VOD', 'err');
       }
     }, backoff);
   }
 
+  // ── play principal (con todas las mejoras) ──
   async function play(channel, videoElement, statusCallback, errorCallback) {
     if (!videoElement || !channel?.url) return;
 
@@ -1295,10 +1290,9 @@ const PlayerService = (() => {
     const nativeSource = isNativeMediaUrl(sourceUrl);
     const explicitHls = isHlsUrl(sourceUrl);
 
-    // Termux remains the transport layer whenever it is available.
     const playUrl = await resolvePlayUrl(sourceUrl);
 
-    // ================= VOD =================
+    // ================= VOD (MEJORADO) =================
     if (nativeSource) {
       mode = MODE.VOD;
       document.getElementById('playerFs')?.classList.add('native-vod');
@@ -1309,53 +1303,63 @@ const PlayerService = (() => {
       let lastTime = 0;
       let lastAdvanceAt = Date.now();
       let stalled = false;
+      let userPaused = false;
 
       const markProgress = () => {
         const t = Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0;
-        if (t > lastTime + 0.15) lastTime = t;
-        lastAdvanceAt = Date.now();
-        stalled = false;
+        if (t > lastTime + 0.15) {
+          lastTime = t;
+          lastAdvanceAt = Date.now();
+          stalled = false;
+        }
       };
 
-      const markStall = () => {
-        if (!videoElement.ended) stalled = true;
-      };
+      const onPause = () => { userPaused = true; };
+      const onPlay = () => { userPaused = false; };
+      const onPlaying = () => { userPaused = false; };
 
-      const onError = () => {
-        if (!videoElement.ended) stalled = true;
+      const onVideoError = () => {
+        if (mode !== MODE.VOD || videoElement.ended || userPaused || videoElement.paused) return;
+        if (!vodRecoveryBusy && vodRecoveryCount < VOD_MAX_RECOVERY) {
+          recoverVod(videoElement, sourceUrl, statusCallback);
+        }
       };
 
       videoElement.addEventListener('timeupdate', markProgress);
       videoElement.addEventListener('progress', markProgress);
-      videoElement.addEventListener('waiting', markStall);
-      videoElement.addEventListener('stalled', markStall);
-      videoElement.addEventListener('error', onError);
+      videoElement.addEventListener('pause', onPause);
+      videoElement.addEventListener('play', onPlay);
+      videoElement.addEventListener('playing', onPlaying);
+      videoElement.addEventListener('error', onVideoError);
 
       cleanupMode = () => {
         videoElement.removeEventListener('timeupdate', markProgress);
         videoElement.removeEventListener('progress', markProgress);
-        videoElement.removeEventListener('waiting', markStall);
-        videoElement.removeEventListener('stalled', markStall);
-        videoElement.removeEventListener('error', onError);
+        videoElement.removeEventListener('pause', onPause);
+        videoElement.removeEventListener('play', onPlay);
+        videoElement.removeEventListener('playing', onPlaying);
+        videoElement.removeEventListener('error', onVideoError);
       };
 
-      // IMPORTANT: do not require paused === false.
-      // On Android/Chrome a network stall can pause the element automatically.
       vodTimer = setInterval(() => {
         if (mode !== MODE.VOD || videoElement.ended) return;
+        if (userPaused || videoElement.paused) return;
 
         const now = Date.now();
-        const currentTime = Number.isFinite(videoElement.currentTime)
-          ? videoElement.currentTime
-          : 0;
+        const currentTime = Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0;
 
-        const noAdvance = now - lastAdvanceAt >= 12000;
-        const looksStalled = stalled || (videoElement.readyState < 3 && noAdvance);
+        const noAdvance = now - lastAdvanceAt >= 18000;
+        const lowReady = videoElement.readyState < 3;
+        const hasBuffered = videoElement.buffered.length > 0 &&
+                            videoElement.buffered.end(0) > currentTime + 1;
 
-        if (looksStalled) {
+        if (hasBuffered && !noAdvance) return;
+
+        if (lowReady && noAdvance && !videoElement.ended) {
+          if (vodRecoveryBusy) return;
           recoverVod(videoElement, sourceUrl, statusCallback);
         }
-      }, 2000);
+      }, 4000);
 
       await requestWakeLock();
       statusCallback('VOD · reproduciendo...', 'ok');
@@ -1370,8 +1374,9 @@ const PlayerService = (() => {
       return;
     }
 
-    // ================= LIVE / HLS =================
+    // ================= LIVE / HLS (MEJORADO) =================
     mode = MODE.LIVE;
+    liveRecoveryAttempts = 0;
     const canUseHls = window.Hls && Hls.isSupported();
 
     if (!canUseHls || (!explicitHls && !/^https?:\/\//i.test(playUrl))) {
@@ -1446,33 +1451,38 @@ const PlayerService = (() => {
       videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
     });
 
-    // LIVE recovery is also state-based and does not require the element to
-    // remain unpaused. A network stall can pause the media element.
     liveTimer = setInterval(() => {
       if (mode !== MODE.LIVE || !hls || hls.destroyed) return;
+      if (videoElement.paused) return;
 
       const now = Date.now();
-      const currentTime = Number.isFinite(videoElement.currentTime)
-        ? videoElement.currentTime
-        : 0;
+      const currentTime = Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0;
 
       if (currentTime > lastLiveTime + 0.15) {
         lastLiveTime = currentTime;
         lastLiveAdvanceAt = now;
+        liveRecoveryAttempts = 0;
         return;
       }
 
       const stalled = videoElement.readyState < 3 || videoElement.buffered.length === 0;
-      if (stalled && now - lastLiveAdvanceAt >= 12000 && !liveRecoveryBusy) {
+      if (stalled && now - lastLiveAdvanceAt >= 15000 && !liveRecoveryBusy) {
+        if (liveRecoveryAttempts >= MAX_LIVE_RECOVERY) {
+          statusCallback('LIVE: no se pudo recuperar tras varios intentos', 'err');
+          return;
+        }
         liveRecoveryBusy = true;
-        statusCallback('LIVE interrumpido · recuperando...', 'err');
+        liveRecoveryAttempts++;
+        statusCallback(`LIVE interrumpido · recuperando (${liveRecoveryAttempts}/${MAX_LIVE_RECOVERY})...`, 'err');
 
-        try { hls.startLoad(-1); } catch {}
+        try {
+          hls.startLoad(-1);
+        } catch {}
 
         lastLiveAdvanceAt = now;
-        setTimeout(() => { liveRecoveryBusy = false; }, 2000);
+        setTimeout(() => { liveRecoveryBusy = false; }, 3000);
       }
-    }, 2000);
+    }, 4000);
 
     hls.on(Hls.Events.ERROR, (_, data) => {
       if (!data?.fatal || mode !== MODE.LIVE) return;
@@ -2751,13 +2761,8 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     let pipWasActive = false;
     let pipWasPlaying = false;
 
-    
-
     $('#mainVid').addEventListener('enterpictureinpicture', () => {
       pipWasActive = true;
-      // Guardamos el estado justo al entrar. No lo modificamos ante un pause
-      // posterior, porque Android/Chrome puede pausar el vídeo temporalmente
-      // mientras la ventana flotante sigue activa.
       pipWasPlaying = !$('#mainVid').paused;
     });
     $('#mainVid').addEventListener('leavepictureinpicture', () => {
