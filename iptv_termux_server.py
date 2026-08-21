@@ -3,13 +3,144 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote, unquote
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
-import os, json, re
+import os, json, re, threading, time
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urljoin
 
 HOST='127.0.0.1'; PORT=8765
 ROOT=os.path.dirname(os.path.abspath(__file__))
 INDEX=os.path.join(ROOT,'IPTV_STUDIO_DULCINEA_2026.html')
 MAX_PLAYLIST=50*1024*1024
 BUF=64*1024
+
+
+# ===== HLS LIVE PREFETCH / RAM CACHE =====
+# Keeps a few future HLS segments in RAM. It does not write media to disk.
+HLS_CACHE_MAX = 64 * 1024 * 1024
+HLS_PREFETCH_SEGMENTS = 4
+HLS_PREFETCH_INTERVAL = 1.0
+HLS_CACHE_TTL = 45.0
+
+_hls_cache = OrderedDict()       # url -> (timestamp, bytes, content_type)
+_hls_pending = set()             # URLs currently being downloaded
+_hls_workers = {}                # playlist_url -> Thread
+_hls_lock = threading.RLock()
+
+def _cache_get(url):
+    now = time.time()
+    with _hls_lock:
+        item = _hls_cache.get(url)
+        if not item:
+            return None
+        ts, data, ctype = item
+        if now - ts > HLS_CACHE_TTL:
+            _hls_cache.pop(url, None)
+            return None
+        _hls_cache.move_to_end(url)
+        return data, ctype
+
+def _cache_put(url, data, ctype):
+    if not data or len(data) > 16 * 1024 * 1024:
+        return
+    with _hls_lock:
+        _hls_cache[url] = (time.time(), data, ctype or 'application/octet-stream')
+        _hls_cache.move_to_end(url)
+        total = sum(len(v[1]) for v in _hls_cache.values())
+        while total > HLS_CACHE_MAX and _hls_cache:
+            _, old = _hls_cache.popitem(last=False)
+            total -= len(old[1])
+
+def _fetch_segment(url):
+    with _hls_lock:
+        if url in _hls_pending:
+            return
+        if _cache_get(url):
+            return
+        _hls_pending.add(url)
+
+    try:
+        req = Request(url, headers=remote_headers())
+        with urlopen(req, timeout=12) as r:
+            data = r.read(16 * 1024 * 1024 + 1)
+            if len(data) <= 16 * 1024 * 1024:
+                _cache_put(url, data, r.headers.get('Content-Type'))
+    except Exception:
+        pass
+    finally:
+        with _hls_lock:
+            _hls_pending.discard(url)
+
+def _extract_hls_uris(text, final_url):
+    uris = []
+    seen = set()
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s or s.startswith('#'):
+            # Also prefetch URI= values such as EXT-X-KEY / EXT-X-MAP.
+            m = re.search(r'URI="([^"]+)"', s, re.I)
+            if m:
+                u = urljoin(final_url, m.group(1))
+                if u not in seen:
+                    seen.add(u)
+                    uris.append(u)
+            continue
+        u = urljoin(final_url, s)
+        if u not in seen:
+            seen.add(u)
+            uris.append(u)
+    return uris
+
+def _prefetch_playlist_loop(playlist_url):
+    while True:
+        try:
+            req = Request(playlist_url, headers=remote_headers())
+            with urlopen(req, timeout=10) as r:
+                raw = r.read(MAX_PLAYLIST + 1)
+                final_url = r.geturl()
+            if len(raw) > MAX_PLAYLIST:
+                time.sleep(HLS_PREFETCH_INTERVAL)
+                continue
+
+            text = raw.decode('utf-8-sig', 'replace')
+            uris = _extract_hls_uris(text, final_url)
+
+            # Only fetch the newest few URIs. This keeps latency and RAM use low.
+            candidates = uris[-HLS_PREFETCH_SEGMENTS:]
+            with ThreadPoolExecutor(max_workers=HLS_PREFETCH_SEGMENTS) as pool:
+                futures = [pool.submit(_fetch_segment, u) for u in candidates]
+                for f in as_completed(futures):
+                    try:
+                        f.result()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        time.sleep(HLS_PREFETCH_INTERVAL)
+
+def start_hls_prefetch(playlist_url):
+    with _hls_lock:
+        t = _hls_workers.get(playlist_url)
+        if t and t.is_alive():
+            return
+        t = threading.Thread(
+            target=_prefetch_playlist_loop,
+            args=(playlist_url,),
+            daemon=True,
+            name='hls-prefetch'
+        )
+        _hls_workers[playlist_url] = t
+        t.start()
+
+def remote_headers(range_header=None):
+    h = {
+        'User-Agent': 'Mozilla/5.0 IPTV-Studio-Termux/2.1',
+        'Accept': '*/*',
+        # Do not force "close": allow the remote HTTP stack to reuse where possible.
+    }
+    if range_header:
+        h['Range'] = range_header
+    return h
 
 
 def cors(h):
@@ -47,10 +178,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def valid_url(self,url): return bool(re.match(r'^https?://',url,re.I))
 
-    def remote_headers(self, range_header=None):
-        h={'User-Agent':'Mozilla/5.0 IPTV-Studio-Termux/2.0','Accept':'*/*','Connection':'close'}
-        if range_header: h['Range']=range_header
-        return h
 
     def fetch_playlist(self,url):
         if not self.valid_url(url): self.send_small(400,json_bytes({'ok':False,'error':'URL invalida'}),'application/json; charset=utf-8'); return
@@ -70,6 +197,22 @@ class Handler(BaseHTTPRequestHandler):
         if not self.valid_url(url): self.send_small(400,json_bytes({'ok':False,'error':'URL invalida'}),'application/json; charset=utf-8'); return
         try:
             range_header=self.headers.get('Range')
+
+            # For normal HLS segment requests without Range, answer directly
+            # from the RAM prefetch cache before opening another remote connection.
+            if not range_header:
+                cached = _cache_get(url)
+                if cached:
+                    data, cached_type = cached
+                    self.send_response(200); cors(self)
+                    self.send_header('Content-Type', cached_type)
+                    self.send_header('Content-Length', str(len(data)))
+                    self.send_header('Accept-Ranges', 'bytes')
+                    self.end_headers()
+                    self.wfile.write(data)
+                    self.wfile.flush()
+                    return
+
             req=Request(url,headers=self.remote_headers(range_header))
             r=urlopen(req,timeout=25)
             ctype=(r.headers.get('Content-Type') or '').lower()
@@ -93,6 +236,7 @@ class Handler(BaseHTTPRequestHandler):
                         line=self.local_proxy_url(absu)
                     out.append(line)
                 data=('\n'.join(out)+'\n').encode('utf-8')
+                start_hls_prefetch(final_url)
                 self.send_small(200,data,'application/vnd.apple.mpegurl; charset=utf-8'); r.close(); return
             # Binary stream/file with Range support.
             status=getattr(r,'status',200)
