@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+/* (Mismo CSS que antes, sin cambios) */
 :root {
   --bg-primary: #0a0a0f;
   --bg-secondary: #12121a;
@@ -906,9 +907,9 @@ ul { list-style: none; }
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.2/dist/hls.min.js"></script>
 <script>
-// ═══════════════════════════════════════════════════
+// ============================================================
 //  SERVICIO DE ALMACENAMIENTO (IndexedDB)
-// ═══════════════════════════════════════════════════
+// ============================================================
 const StorageService = (() => {
   const DB_NAME = 'dulcinea_iptv_db_v2';
   const DB_VERSION = 3;
@@ -1022,9 +1023,9 @@ const StorageService = (() => {
   };
 })();
 
-// ═══════════════════════════════════════════════════
+// ============================================================
 //  SERVICIO DE PARSEO M3U (MEJORADO)
-// ═══════════════════════════════════════════════════
+// ============================================================
 const M3UParser = (() => {
   function normalize(str) {
     return String(str || '').toLowerCase()
@@ -1044,17 +1045,14 @@ const M3UParser = (() => {
       `${channel.group || ''} ${channel.name || ''} ${channel.id || ''}`
     );
 
-    // Series
     if (/(^|\s)(s\d{1,2}\s*e\d{1,3}|season\s*\d+|temporada\s*\d+|episod(?:io|ios)?|series|serie|tv series|tv shows|shows|seriado|seriados|telenovela|novelas|miniserie|mini serie|anime)(\s|$)/.test(combined)) {
       return 'series';
     }
 
-    // Películas / VOD
     if (/(^|\s)(pelicula|peliculas|movie|movies|cine|cinema|film|films|filme|filmes|pelis|vod|video on demand|estrenos|estreno|premiere|premieres|largometraje|cortometraje)(\s|$)/.test(combined)) {
       return 'pelicula';
     }
 
-    // TV en vivo
     if (/(^|\s)(en vivo|envivo|live|directo|canales|canal|channel|channels|tv en vivo|streaming|stream|radio|tv live|live tv|en directo|news|noticias|deportes|sports)(\s|$)/.test(combined)) {
       return 'envivo';
     }
@@ -1092,9 +1090,9 @@ const M3UParser = (() => {
   return { parse, classify, normalize };
 })();
 
-// ═══════════════════════════════════════════════════
+// ============================================================
 //  SERVICIO DE REPRODUCTOR (HLS + fallback mejorado)
-// ═══════════════════════════════════════════════════
+// ============================================================
 const PlayerService = (() => {
   let hls = null;
   let currentChannel = null;
@@ -1114,12 +1112,15 @@ const PlayerService = (() => {
 
   let liveRecoveryBusy = false;
   let liveRecoveryAttempts = 0;
-  const MAX_LIVE_RECOVERY = 4;
+  const MAX_LIVE_RECOVERY = 6;          // más intentos
+  let liveReloadAttempts = 0;           // para reiniciar HLS si falla
+  const MAX_LIVE_RELOAD = 2;
 
-  // ── Caché de Termux ──
   let termuxStatus = { available: false, lastCheck: 0 };
 
-  // ── Funciones auxiliares ──
+  // ------------------------------------------------------------
+  //  AUXILIARES
+  // ------------------------------------------------------------
   function clearTimers() {
     if (liveTimer) clearInterval(liveTimer);
     if (vodTimer) clearInterval(vodTimer);
@@ -1168,6 +1169,7 @@ const PlayerService = (() => {
     vodRecoveryCount = 0;
     liveRecoveryBusy = false;
     liveRecoveryAttempts = 0;
+    liveReloadAttempts = 0;
 
     if (videoElement) videoElement.controls = false;
   }
@@ -1190,7 +1192,9 @@ const PlayerService = (() => {
            /\/movie(?:\/|$)/i.test(url);
   }
 
-  // ── resolvePlayUrl mejorado con caché ──
+  // ------------------------------------------------------------
+  //  resolvePlayUrl con caché
+  // ------------------------------------------------------------
   async function resolvePlayUrl(sourceUrl) {
     const now = Date.now();
     if (now - termuxStatus.lastCheck > 10000) {
@@ -1210,7 +1214,9 @@ const PlayerService = (() => {
     return sourceUrl;
   }
 
-  // ── recoverVod mejorado ──
+  // ------------------------------------------------------------
+  //  RECUPERACIÓN VOD (mejorada)
+  // ------------------------------------------------------------
   async function recoverVod(videoElement, sourceUrl, statusCallback) {
     if (mode !== MODE.VOD || vodRecoveryBusy || vodRecoveryCount >= VOD_MAX_RECOVERY) return;
 
@@ -1272,7 +1278,9 @@ const PlayerService = (() => {
     }, backoff);
   }
 
-  // ── play principal (con todas las mejoras) ──
+  // ------------------------------------------------------------
+  //  REPRODUCCIÓN PRINCIPAL (mejoras LIVE)
+  // ------------------------------------------------------------
   async function play(channel, videoElement, statusCallback, errorCallback) {
     if (!videoElement || !channel?.url) return;
 
@@ -1292,7 +1300,7 @@ const PlayerService = (() => {
 
     const playUrl = await resolvePlayUrl(sourceUrl);
 
-    // ================= VOD (MEJORADO) =================
+    // ================= VOD =================
     if (nativeSource) {
       mode = MODE.VOD;
       document.getElementById('playerFs')?.classList.add('native-vod');
@@ -1377,6 +1385,7 @@ const PlayerService = (() => {
     // ================= LIVE / HLS (MEJORADO) =================
     mode = MODE.LIVE;
     liveRecoveryAttempts = 0;
+    liveReloadAttempts = 0;
     const canUseHls = window.Hls && Hls.isSupported();
 
     if (!canUseHls || (!explicitHls && !/^https?:\/\//i.test(playUrl))) {
@@ -1386,6 +1395,7 @@ const PlayerService = (() => {
 
     videoElement.controls = false;
 
+    // --- Crear HLS ---
     hls = new Hls({
       enableWorker: true,
       lowLatencyMode: false,
@@ -1394,9 +1404,9 @@ const PlayerService = (() => {
       backBufferLength: 0,
       liveDurationInfinity: true,
       capLevelToPlayerSize: true,
-      manifestLoadingMaxRetry: 5,
-      levelLoadingMaxRetry: 5,
-      fragLoadingMaxRetry: 5,
+      manifestLoadingMaxRetry: 6,
+      levelLoadingMaxRetry: 6,
+      fragLoadingMaxRetry: 6,
       fragLoadingRetryDelay: 1000,
       startFragPrefetch: true,
       abrEwmaDefaultEstimate: 1e6
@@ -1451,26 +1461,92 @@ const PlayerService = (() => {
       videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
     });
 
+    // ---- Timer de recuperación LIVE (más robusto) ----
     liveTimer = setInterval(() => {
       if (mode !== MODE.LIVE || !hls || hls.destroyed) return;
-      if (videoElement.paused) return;
+      if (videoElement.paused) return;   // respetar pausa
 
       const now = Date.now();
       const currentTime = Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0;
 
+      // Si avanza, reiniciamos contadores
       if (currentTime > lastLiveTime + 0.15) {
         lastLiveTime = currentTime;
         lastLiveAdvanceAt = now;
         liveRecoveryAttempts = 0;
+        liveReloadAttempts = 0;
         return;
       }
 
+      // Detectar stall
       const stalled = videoElement.readyState < 3 || videoElement.buffered.length === 0;
       if (stalled && now - lastLiveAdvanceAt >= 15000 && !liveRecoveryBusy) {
+        // Intentar recuperar
         if (liveRecoveryAttempts >= MAX_LIVE_RECOVERY) {
-          statusCallback('LIVE: no se pudo recuperar tras varios intentos', 'err');
-          return;
+          // Si ya agotamos los reintentos normales, forzamos un reload de HLS
+          if (liveReloadAttempts < MAX_LIVE_RELOAD) {
+            liveReloadAttempts++;
+            statusCallback(`LIVE: reiniciando HLS (${liveReloadAttempts}/${MAX_LIVE_RELOAD})...`, 'err');
+            try {
+              // Destruir y recrear HLS para forzar una recarga completa
+              const oldHls = hls;
+              hls = new Hls({
+                enableWorker: true,
+                lowLatencyMode: false,
+                maxBufferLength: 10,
+                maxMaxBufferLength: 30,
+                backBufferLength: 0,
+                liveDurationInfinity: true,
+                capLevelToPlayerSize: true,
+                manifestLoadingMaxRetry: 6,
+                levelLoadingMaxRetry: 6,
+                fragLoadingMaxRetry: 6,
+                fragLoadingRetryDelay: 1000,
+                startFragPrefetch: true,
+                abrEwmaDefaultEstimate: 1e6
+              });
+              // Replicar eventos
+              hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
+              hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+                if (data?.details?.live) enableLive();
+              });
+              hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                requestWakeLock();
+                statusCallback('HLS reiniciado. Reproduciendo...', 'ok');
+                videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+              });
+              // Copiar manejo de errores
+              hls.on(Hls.Events.ERROR, (_, data) => {
+                if (!data?.fatal || mode !== MODE.LIVE) return;
+                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                  statusCallback('Error de red · recuperando LIVE...', 'err');
+                  try { hls.startLoad(-1); } catch {}
+                } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                  statusCallback('Recuperando vídeo LIVE...', 'err');
+                  try { hls.recoverMediaError(); } catch {}
+                } else {
+                  errorCallback('La fuente LIVE no responde o no es compatible.');
+                }
+              });
+              hls.attachMedia(videoElement);
+              // Destruir el anterior después de un breve retraso
+              setTimeout(() => { try { oldHls.destroy(); } catch {} }, 500);
+              liveRecoveryAttempts = 0;   // resetear intentos normales
+              liveRecoveryBusy = false;
+              lastLiveAdvanceAt = now;
+              return;
+            } catch (e) {
+              statusCallback('Error al reiniciar HLS', 'err');
+              liveRecoveryBusy = false;
+              return;
+            }
+          } else {
+            statusCallback('LIVE: no se pudo recuperar tras múltiples intentos', 'err');
+            return;
+          }
         }
+
+        // Reintento normal
         liveRecoveryBusy = true;
         liveRecoveryAttempts++;
         statusCallback(`LIVE interrumpido · recuperando (${liveRecoveryAttempts}/${MAX_LIVE_RECOVERY})...`, 'err');
@@ -1484,6 +1560,7 @@ const PlayerService = (() => {
       }
     }, 4000);
 
+    // ---- Manejo de errores de HLS ----
     hls.on(Hls.Events.ERROR, (_, data) => {
       if (!data?.fatal || mode !== MODE.LIVE) return;
 
@@ -1502,6 +1579,9 @@ const PlayerService = (() => {
     hls.attachMedia(videoElement);
   }
 
+  // ------------------------------------------------------------
+  //  STOP
+  // ------------------------------------------------------------
   function stop(videoElement) {
     cleanup(videoElement);
     clearTimers();
@@ -1533,9 +1613,9 @@ const PlayerService = (() => {
   return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
 })();
 
-// ═══════════════════════════════════════════════════
-//  APLICACIÓN PRINCIPAL
-// ═══════════════════════════════════════════════════
+// ============================================================
+//  APLICACIÓN PRINCIPAL (App)
+// ============================================================
 const App = (() => {
   let channels = [];
   let groups = {};
@@ -1560,7 +1640,7 @@ const App = (() => {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => document.querySelectorAll(s);
 
-  // ── Utils ──
+  // ---- Utils ----
   function toast(msg, type = 'info') {
     const container = $('#toastContainer');
     const t = document.createElement('div');
@@ -1622,7 +1702,7 @@ const App = (() => {
     return '📂';
   }
 
-  // ── Carga de lista ──
+  // ---- Carga de lista ----
   function setChannels(items, opts = {}) {
     channels = (Array.isArray(items) ? items : []).map(c => ({
       ...c,
@@ -1645,7 +1725,7 @@ const App = (() => {
     }
   }
 
-  // ── Hero ──
+  // ---- Hero ----
   function updateHero() {
     if (!channels.length) return;
     const f = channels[Math.floor(Math.random() * Math.min(channels.length, 15))];
@@ -1670,7 +1750,7 @@ const App = (() => {
     $('#heroInfoBtn').onclick = () => openDetail(f);
   }
 
-  // ── Renderizado perezoso ──
+  // ---- Renderizado perezoso ----
   function buildRowPlaceholder(title, count) {
     const div = document.createElement('div');
     div.className = 'cat-row';
@@ -1757,7 +1837,7 @@ const App = (() => {
     trk.scrollBy({ left: dir * trk.clientWidth * 0.8, behavior: 'smooth' });
   }
 
-  // ── Tarjeta ──
+  // ---- Tarjeta ----
   function buildCard(c) {
     const div = document.createElement('div');
     div.className = 'card';
@@ -1832,7 +1912,7 @@ const App = (() => {
     return div;
   }
 
-  // ── Renderizado con clasificación ──
+  // ---- Renderizado con clasificación ----
   function renderRowsLazy() {
     const cont = $('#rowsCont');
     cont.replaceChildren();
@@ -1909,7 +1989,7 @@ const App = (() => {
     }
   }
 
-  // ── Favoritos ──
+  // ---- Favoritos ----
   async function toggleFavorite(c, cardEl) {
     const inFav = favorites.some(f => f.url === c.url);
     try {
@@ -1940,7 +2020,7 @@ const App = (() => {
     }
   }
 
-  // ── Detalle modal ──
+  // ---- Detalle modal ----
   function openDetail(c) {
     $('#modalTtl').textContent = c.name;
     $('#modalGrp').textContent = c.group || 'Sin categoría';
@@ -1983,7 +2063,7 @@ const App = (() => {
     if (lastFocusedElement) lastFocusedElement.focus();
   }
 
-  // ── Controles del reproductor ──
+  // ---- Controles del reproductor ----
   function showPlayerUI(autoHide = true) {
     const fs = $('#playerFs');
     const top = $('#playerTopBar');
@@ -2027,7 +2107,7 @@ const App = (() => {
     } catch {}
   }
 
-  // ── Controles inferiores persistentes ──
+  // ---- Controles inferiores persistentes ----
   let playerControlsClean = null;
 
   function formatPlayerTime(sec) {
@@ -2112,12 +2192,11 @@ const App = (() => {
     };
   }
 
-  // ── Reproducción ──
+  // ---- Reproducción ----
   async function playChannel(c) {
     curChannel = c;
     await StorageService.addHistory(c);
     history = await StorageService.getHistory();
-    // Progress saver cleanup from previous channel
     if (window._progressSaverClean) { window._progressSaverClean(); window._progressSaverClean = null; }
     const vid = $('#mainVid');
     const statusEl = $('#playerStatus');
@@ -2154,7 +2233,6 @@ const App = (() => {
       }
     );
     setupPersistentPlayerControls(vid, c);
-    // Movie progress saving (not for LIVE)
     if (c._type === 'pelicula') {
       let _progTimer = null;
       const _progSave = async () => {
@@ -2292,7 +2370,6 @@ const App = (() => {
 
   function stopPlayer() {
     if (playerControlsClean) { try { playerControlsClean(); } catch {} playerControlsClean=null; }
-
     if (playerHistoryActive) {
       window.history.back();
       return;
@@ -2300,7 +2377,7 @@ const App = (() => {
     stopPlayerInternal();
   }
 
-  // ── Sidebar ──
+  // ---- Sidebar ----
   function updateSidebarCats() {
     const sec = $('#sbCatSection');
     const cont = $('#sbCats');
@@ -2326,7 +2403,7 @@ const App = (() => {
     closeSidebar();
   }
 
-  // ── Drawer ──
+  // ---- Drawer ----
   let drawerHistoryActive = false;
 
   function openDrawer() {
@@ -2359,7 +2436,7 @@ const App = (() => {
     closeDrawerInternal();
   }
 
-  // ── Búsqueda ──
+  // ---- Búsqueda ----
   function openSearch() {
     $('#searchOverlay').classList.add('open');
     setTimeout(() => $('#searchInput').focus(), 80);
@@ -2440,7 +2517,7 @@ const App = (() => {
     }
   }
 
-  // ── Inicialización ──
+  // ---- Inicialización ----
   async function init() {
     try { favorites = await StorageService.getFavorites(); } catch (e) { favorites = []; }
     try { history = await StorageService.getHistory(); } catch (e) { history = []; }
@@ -2448,7 +2525,6 @@ const App = (() => {
     $('#activePic').style.background = 'linear-gradient(135deg,#E50914,#8b0000)';
     $('#activePic').textContent = '📂';
 
-    // Estado base de navegación: el primer 'Atrás' desde el reproductor vuelve a la app.
     if (!window.history.state || window.history.state.dulcinea !== 'base') {
       window.history.replaceState({ dulcinea: 'base' }, '', window.location.href);
     }
@@ -2506,7 +2582,6 @@ const App = (() => {
         closeProfilesInternal();
         return;
       }
-      // Evita que vistas internas abiertas provoquen la salida de la app.
       if (drawerHistoryActive && $('#drawer').classList.contains('open')) { closeDrawerInternal(); return; }
       if ($('#searchOverlay').classList.contains('open')) { closeSearch(); return; }
       if ($('#modalBg').classList.contains('open')) { closeDetail(); return; }
@@ -2806,7 +2881,6 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
         if (sec === 'more') { openMorePanel(); return; }
       });
     });
-    // More panel items
     document.querySelectorAll('.more-item').forEach(btn => {
       btn.addEventListener('click', () => {
         closeMorePanel();
@@ -2829,10 +2903,9 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     });
 
     await refreshSavedLists();
-
   }
 
-  // ── Navegación ──
+  // ---- Navegación ----
   function handleNavAction(section) {
     const rows = $$('.cat-row');
     if (section === 'milista') {
@@ -2958,9 +3031,9 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
   }
 
 
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   //  VIEW MANAGER
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   function capFirst(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
   function showView(name, opts = {}) {
@@ -3004,7 +3077,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     }
   }
 
-  // ── More Panel ──
+  // ---- More Panel ----
   function openMorePanel() {
     document.getElementById('morePanel')?.classList.add('open');
     document.getElementById('morePanelBackdrop')?.classList.add('open');
@@ -3014,7 +3087,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     document.getElementById('morePanelBackdrop')?.classList.remove('open');
   }
 
-  // ── Confirm Dialog ──
+  // ---- Confirm Dialog ----
   function showConfirm(title, msg, onConfirm) {
     const bg = document.getElementById('confirmDialogBg');
     if (!bg) return;
@@ -3025,15 +3098,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     document.getElementById('confirmCancelBtn').onclick = () => bg.classList.remove('open');
   }
 
-  // ── Series name extraction ──
-  function extractSeriesName(name) {
-    return (name || '')
-      .replace(/\s*[-–_|]+\s*(S\d{1,2}\s*E\d{1,3}|[Ss]eason\s*\d+|[Tt]emporada\s*\d+|[Ee]p(?:isode|isodio)?\s*\d+|[Ee]\d{1,3}(\s|$)).*$/i, '')
-      .replace(/[-_.\s|]+$/, '')
-      .trim() || name;
-  }
-
-  // ── Termux status check ──
+  // ---- Termux status ----
   async function checkTermuxStatus() {
     const card = document.getElementById('termuxStatusCard');
     if (!card) return;
@@ -3067,7 +3132,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     }
   }
 
-  // ── Actualizar lista actual ──
+  // ---- Actualizar lista actual ----
   async function updateCurrentList() {
     const sourceUrl = currentListMeta.url;
     if (!sourceUrl) { toast('No hay lista con URL fuente para actualizar.', 'error'); return; }
@@ -3110,9 +3175,9 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     } catch(e) { toast('No se pudo actualizar: ' + e.message, 'error'); }
   }
 
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   //  RENDER: EXPLORAR
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   function renderViewExplore(opts = {}) {
     const el = document.getElementById('viewExplore');
     if (!el) return;
@@ -3194,9 +3259,9 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     renderGrid();
   }
 
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   //  RENDER: EN VIVO
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   function renderViewLive() {
     const el = document.getElementById('viewLive');
     if (!el) return;
@@ -3228,9 +3293,9 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     document.getElementById('liveBack')?.addEventListener('click', () => hideAllViews());
   }
 
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   //  RENDER: MI LISTA
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   async function renderViewMyList() {
     const el = document.getElementById('viewMyList');
     if (!el) return;
@@ -3273,9 +3338,9 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     renderMyGrid();
   }
 
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   //  RENDER: HISTORIAL
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   async function renderViewHistory() {
     const el = document.getElementById('viewHistory');
     if (!el) return;
@@ -3352,9 +3417,9 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     return div;
   }
 
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   //  RENDER: CONFIGURACIÓN
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   function renderViewSettings() {
     const el = document.getElementById('viewSettings');
     if (!el) return;
@@ -3383,9 +3448,9 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     ));
   }
 
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   //  RENDER: ESTADO TERMUX
-  // ═══════════════════════════════════════════════════
+  // ============================================================
   function renderViewTermux() {
     const el = document.getElementById('viewTermux');
     if (!el) return;
