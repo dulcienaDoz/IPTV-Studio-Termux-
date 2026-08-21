@@ -1211,12 +1211,12 @@ const PlayerService = (() => {
     initialLiveManifestSize: 1,
 
     // Keep several live fragments ahead without forcing a huge latency.
-    maxBufferLength: 18,
-    maxMaxBufferLength: 32,
+    maxBufferLength: 25,
+    maxMaxBufferLength: 45,
 
     // These are monitoring thresholds, not a command to stop/restart loading.
-    preferredBufferSeconds: 10,
-    criticalBufferSeconds: 2,
+    preferredBufferSeconds: 15,
+    criticalBufferSeconds: 3,
 
     // Give the HLS loader time to fetch the next fragments before reconnecting.
     segmentTimeoutMs: 9000,
@@ -1382,6 +1382,9 @@ const PlayerService = (() => {
     const instance = new Hls({
       enableWorker: true,
       lowLatencyMode: false,
+      liveSyncDuration: 15,
+      liveMaxLatencyDuration: 45,
+      maxLiveSyncPlaybackRate: 1.05,
 
       // Start from the current live manifest.
       initialLiveManifestSize: LIVE.initialLiveManifestSize,
@@ -1551,9 +1554,9 @@ const PlayerService = (() => {
         // Buffer is smaller than preferred, but that is NOT an error.
         // The loader gets time to fetch the next fragment(s).
         const deliveryStalled =
-          fragAge >= LIVE.segmentTimeoutMs &&
-          levelAge >= LIVE.levelTimeoutMs &&
-          now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs;
+          fragAge >= LIVE.segmentTimeoutMs * 2 &&
+          levelAge >= LIVE.levelTimeoutMs * 2 &&
+          now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs * 2;
 
         const bufferEmpty = ahead <= LIVE.criticalBufferSeconds;
         const playbackStopped = video.paused || video.readyState < 3;
