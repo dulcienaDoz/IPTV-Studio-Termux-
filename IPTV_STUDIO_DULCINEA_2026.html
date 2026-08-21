@@ -610,115 +610,6 @@ ul { list-style: none; }
 .termux-help-list { list-style: decimal; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--text-secondary); }
 .termux-help-list code { font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
 
-
-/* ===== VOD · GESTOS Y FEEDBACK ===== */
-.vod-gesture-layer{
-  position:absolute; inset:0; z-index:12; pointer-events:none;
-}
-.vod-zone{
-  position:absolute; top:0; bottom:0; width:38%;
-  border:0; background:transparent; pointer-events:none;
-  -webkit-tap-highlight-color:transparent;
-}
-.vod-zone-left{left:0}
-.vod-zone-right{right:0}
-.vod-gesture-layer.active .vod-zone{pointer-events:auto}
-.vod-seek-feedback{
-  position:absolute; left:50%; top:50%;
-  transform:translate(-50%,-50%) scale(.85);
-  min-width:100px; min-height:56px; padding:12px 18px;
-  border-radius:18px;
-  background:rgba(0,0,0,.72);
-  border:1px solid rgba(255,255,255,.16);
-  color:#fff; font-weight:800; font-size:18px;
-  display:flex; align-items:center; justify-content:center;
-  opacity:0; pointer-events:none;
-  transition:opacity .12s ease, transform .12s ease;
-  backdrop-filter:blur(10px);
-}
-.vod-seek-feedback.show{
-  opacity:1; transform:translate(-50%,-50%) scale(1);
-}
-.vod-seek-feedback.forward{margin-left:24%}
-.vod-seek-feedback.back{margin-left:-24%}
-@media(max-width:600px){
-  .vod-zone{width:42%}
-}
-
-/* ===== CONTROLES INFERIORES CORREGIDOS ===== */
-.player-controls.persistent-controls{
-  position:absolute;
-  left:0;right:0;bottom:0;
-  z-index:30;
-  display:grid;
-  grid-template-columns:auto auto minmax(0,1fr) auto auto;
-  align-items:center;
-  gap:8px;
-  min-height:58px;
-  padding:26px 12px 10px;
-  box-sizing:border-box;
-  background:linear-gradient(to top,rgba(0,0,0,.94),rgba(0,0,0,0));
-  opacity:1!important;
-  visibility:visible!important;
-  pointer-events:auto!important;
-  touch-action:manipulation;
-}
-.player-controls.persistent-controls.player-idle{
-  opacity:1!important;visibility:visible!important;pointer-events:auto!important;
-}
-.player-controls.persistent-controls .pc-btn{
-  width:38px;height:38px;
-  flex:none;
-  border:0;border-radius:50%;
-  background:rgba(0,0,0,.72);
-  color:#fff;
-  display:flex;align-items:center;justify-content:center;
-  font-size:16px;line-height:1;padding:0;
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
-}
-.player-controls.persistent-controls .pc-time{
-  min-width:34px;
-  max-width:48px;
-  color:#fff;
-  font:10px/1 monospace;
-  text-align:center;
-  user-select:none;
-  overflow:hidden;
-}
-.player-controls.persistent-controls .pc-seek{
-  width:100%;
-  min-width:50px;
-  margin:0;
-  accent-color:#fff;
-  touch-action:pan-x;
-}
-.player-controls.persistent-controls .pc-volume{
-  width:68px;
-  min-width:46px;
-  margin:0;
-  accent-color:#fff;
-  touch-action:pan-x;
-}
-@media(max-width:560px){
-  .player-controls.persistent-controls{
-    grid-template-columns:auto minmax(0,1fr) auto;
-    gap:7px;
-    padding:24px 8px 8px;
-  }
-  .player-controls.persistent-controls .pc-time{
-    display:none;
-  }
-  .player-controls.persistent-controls .pc-volume{
-    width:58px;
-    min-width:50px;
-  }
-  .player-controls.persistent-controls .pc-btn{
-    width:36px;height:36px;
-  }
-  /* Duration is still available to JS but not rendered on tiny screens. */
-  .player-controls.persistent-controls #pcDuration{display:none}
-}
 </style>
 </head>
 <body>
@@ -853,20 +744,8 @@ ul { list-style: none; }
       <button class="player-option danger" id="optClose" type="button">✕&nbsp; Cerrar reproductor</button>
     </div>
   </div>
-  <video id="mainVid" playsinline preload="metadata"></video>
-  <div class="player-controls persistent-controls" id="playerControls" aria-label="Controles de reproducción">
-  <button class="pc-btn" id="pcPlay" type="button" aria-label="Reproducir o pausar">▶</button>
-  <span class="pc-time" id="pcCurrent">00:00</span>
-  <input class="pc-seek" id="pcSeek" type="range" min="0" max="100" value="0" step="0.1" aria-label="Posición">
-  <span class="pc-time" id="pcDuration">00:00</span>
-  <button class="pc-btn" id="pcMute" type="button" aria-label="Silenciar">🔊</button>
-  <input class="pc-volume" id="pcVolume" type="range" min="0" max="1" value="1" step="0.01" aria-label="Volumen">
-</div>
-  <div class="vod-gesture-layer" id="vodGestureLayer" aria-hidden="true">
-    <button class="vod-zone vod-zone-left" id="vodZoneLeft" type="button" aria-label="Retroceder 10 segundos"></button>
-    <button class="vod-zone vod-zone-right" id="vodZoneRight" type="button" aria-label="Avanzar 10 segundos"></button>
-    <div class="vod-seek-feedback" id="vodSeekFeedback"></div>
-  </div>
+  <video id="mainVid" controls playsinline preload="metadata"></video>
+  <div class="player-controls" id="playerControls"></div>
 </div>
 
 <!-- ===== PROFILES ===== -->
@@ -1343,9 +1222,7 @@ const PlayerService = (() => {
         lastProgressAt=now;
         return;
       }
-      const noFragmentProgress = now - lastProgressAt >= 7000;
-      const mediaStopped = video.paused || video.readyState < 3;
-      if(noFragmentProgress && mediaStopped){
+      if(now-lastProgressAt>=7000&&video.readyState<3){
         reconnect(video,sourceUrl,status,error,'sin señal');
       }
     },1000);
@@ -1861,257 +1738,7 @@ const App = (() => {
     } catch {}
   }
 
-
-  // ── VOD · precarga y gestos (solo para películas/series) ──
-  const VodController = (() => {
-    let active = false;
-    let cleanup = null;
-    let hideTimer = null;
-    let feedbackTimer = null;
-    let lastGesture = 0;
-    let seekAccumulator = 0;
-    let prebufferTimer = null;
-
-    const STEP = 10;
-    const PREBUFFER_TARGET = 18;
-
-    function isVod(channel){
-      const t = String(channel?._type || channel?.type || '').toLowerCase();
-      if (t === 'pelicula' || t === 'pelicula' || t === 'movie' || t === 'vod') return true;
-      const u = String(channel?.url || '');
-      return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(u) ||
-             /\/movie(?:\/|$)/i.test(u);
-    }
-
-    function fmt(sec){
-      sec = Math.max(0, Math.floor(Number(sec) || 0));
-      const h = Math.floor(sec/3600);
-      const m = Math.floor((sec%3600)/60);
-      const s = sec%60;
-      return h
-        ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
-        : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    }
-
-    function showFeedback(text, kind){
-      const el = document.getElementById('vodSeekFeedback');
-      if (!el) return;
-      clearTimeout(feedbackTimer);
-      el.textContent = text;
-      el.classList.remove('show','forward','back');
-      el.classList.add(kind);
-      requestAnimationFrame(() => el.classList.add('show'));
-      feedbackTimer = setTimeout(() => el.classList.remove('show'), 650);
-    }
-
-    function bufferedAhead(video){
-      if (!video || !Number.isFinite(video.currentTime)) return 0;
-      const t = video.currentTime;
-      const ranges = video.buffered;
-      for(let i=0;i<ranges.length;i++){
-        const start=ranges.start(i), end=ranges.end(i);
-        if(t>=start-0.25 && t<=end+0.25) return Math.max(0, end-t);
-      }
-      return 0;
-    }
-
-    function startPrebufferWatch(video){
-      if(prebufferTimer) clearInterval(prebufferTimer);
-
-      prebufferTimer = setInterval(() => {
-        if(!active || !video || video.paused || video.ended) return;
-
-        // Do not force seek/reload. Only observe the buffer and expose a
-        // conservative "buffer ready" hint through a data attribute.
-        const ahead = bufferedAhead(video);
-        video.dataset.vodBuffer = String(Math.floor(ahead));
-
-        // Encourage the browser to keep the resource warm without changing
-        // playback position or creating a second network request.
-        if(ahead < PREBUFFER_TARGET && Number.isFinite(video.duration) &&
-           video.duration > video.currentTime + 1){
-          try { video.preload = 'auto'; } catch {}
-        }
-      }, 1200);
-    }
-
-    function seekBy(video, delta){
-      if(!active || !video || !Number.isFinite(video.currentTime) ||
-         !Number.isFinite(video.duration) || video.duration <= 0) return;
-
-      const from = video.currentTime;
-      const target = Math.max(0, Math.min(video.duration - 0.25, from + delta));
-      try{
-        video.currentTime = target;
-      }catch{
-        return;
-      }
-
-      const actual = target - from;
-      seekAccumulator += actual;
-
-      if(delta > 0){
-        showFeedback(`+${Math.round(Math.abs(actual || delta))}s  ⏩`, 'forward');
-      }else{
-        showFeedback(`↩ ${Math.round(Math.abs(actual || delta))}s`, 'back');
-      }
-
-      // A seek should not pause a healthy VOD.
-      if(video.paused && !video.ended){
-        video.play().catch(() => {});
-      }
-    }
-
-    function onTapLeft(e){
-      if(e.pointerType === 'mouse' && e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      seekBy(window.__dulcineaMainVideo, -STEP);
-    }
-
-    function onTapRight(e){
-      if(e.pointerType === 'mouse' && e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      seekBy(window.__dulcineaMainVideo, STEP);
-    }
-
-    function activate(video, channel){
-      deactivate();
-
-      if(!isVod(channel)) return false;
-
-      active = true;
-      window.__dulcineaMainVideo = video;
-
-      const layer = document.getElementById('vodGestureLayer');
-      const left = document.getElementById('vodZoneLeft');
-      const right = document.getElementById('vodZoneRight');
-      if(!layer || !left || !right) return false;
-
-      layer.classList.add('active');
-      layer.setAttribute('aria-hidden','false');
-
-      left.addEventListener('pointerup', onTapLeft);
-      right.addEventListener('pointerup', onTapRight);
-
-      // Do not use the player's global click handler for VOD gesture zones.
-      video.preload = 'auto';
-      startPrebufferWatch(video);
-
-      cleanup = () => {
-        active = false;
-        layer.classList.remove('active');
-        layer.setAttribute('aria-hidden','true');
-        left.removeEventListener('pointerup', onTapLeft);
-        right.removeEventListener('pointerup', onTapRight);
-        clearInterval(prebufferTimer);
-        prebufferTimer = null;
-        clearTimeout(feedbackTimer);
-        video.removeAttribute('data-vod-buffer');
-      };
-      return true;
-    }
-
-    function deactivate(){
-      if(cleanup){ try{cleanup();}catch{} }
-      cleanup = null;
-      active = false;
-      window.__dulcineaMainVideo = null;
-      const layer = document.getElementById('vodGestureLayer');
-      if(layer){
-        layer.classList.remove('active');
-        layer.setAttribute('aria-hidden','true');
-      }
-      clearInterval(prebufferTimer);
-      prebufferTimer = null;
-    }
-
-    return { activate, deactivate, isVod };
-  })();
-
   // ── Reproducción ──
-
-  // ── Controles inferiores persistentes ──
-  const PlayerControls = (() => {
-    let cleanup = null;
-
-    function fmt(sec){
-      sec=Math.max(0,Math.floor(Number(sec)||0));
-      const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
-      return h ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
-               : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    }
-
-    function setup(video, channel){
-      if(cleanup){try{cleanup()}catch{}}
-      cleanup=null;
-      const bar=$('#playerControls'), play=$('#pcPlay'), mute=$('#pcMute');
-      const seek=$('#pcSeek'), vol=$('#pcVolume'), cur=$('#pcCurrent'), dur=$('#pcDuration');
-      if(!bar||!play||!mute||!seek||!vol||!cur||!dur)return;
-
-      const live=!VodController.isVod(channel);
-      seek.disabled=live;
-      seek.style.opacity=live?'.35':'1';
-      dur.textContent=live?'LIVE':'00:00';
-      bar.classList.add('persistent-controls');
-      bar.classList.remove('player-idle');
-
-      const syncPlay=()=>play.textContent=video.paused?'▶':'❚❚';
-      const syncVol=()=>{
-        mute.textContent=(video.muted||video.volume===0)?'🔇':(video.volume<.5?'🔉':'🔊');
-        vol.value=video.muted?'0':String(video.volume);
-      };
-      const syncTime=()=>{
-        const t=Number.isFinite(video.currentTime)?video.currentTime:0;
-        cur.textContent=fmt(t);
-        if(!live&&Number.isFinite(video.duration)&&video.duration>0){
-          dur.textContent=fmt(video.duration);
-          seek.max=String(video.duration);
-          seek.value=String(Math.min(t,video.duration));
-        }
-      };
-
-      const onPlay=e=>{e.preventDefault();e.stopPropagation();video.paused?video.play().catch(()=>{}):video.pause()};
-      const onMute=e=>{e.preventDefault();e.stopPropagation();video.muted=!video.muted;syncVol()};
-      const onVol=e=>{e.stopPropagation();const v=Math.max(0,Math.min(1,Number(e.target.value)));video.volume=v;video.muted=v===0;syncVol()};
-      const onSeek=e=>{
-        e.stopPropagation();
-        if(live||!Number.isFinite(video.duration)||video.duration<=0)return;
-        try{video.currentTime=Math.max(0,Math.min(video.duration,Number(e.target.value)))}catch{}
-      };
-
-      play.addEventListener('click',onPlay);
-      mute.addEventListener('click',onMute);
-      vol.addEventListener('input',onVol);
-      seek.addEventListener('input',onSeek);
-      for(const el of [play,mute,vol,seek]) el.addEventListener('pointerdown',e=>e.stopPropagation());
-
-      video.addEventListener('play',syncPlay);
-      video.addEventListener('pause',syncPlay);
-      video.addEventListener('timeupdate',syncTime);
-      video.addEventListener('loadedmetadata',syncTime);
-      video.addEventListener('durationchange',syncTime);
-      video.addEventListener('volumechange',syncVol);
-
-      syncPlay();syncVol();syncTime();
-
-      cleanup=()=>{
-        play.removeEventListener('click',onPlay);
-        mute.removeEventListener('click',onMute);
-        vol.removeEventListener('input',onVol);
-        seek.removeEventListener('input',onSeek);
-        video.removeEventListener('play',syncPlay);
-        video.removeEventListener('pause',syncPlay);
-        video.removeEventListener('timeupdate',syncTime);
-        video.removeEventListener('loadedmetadata',syncTime);
-        video.removeEventListener('durationchange',syncTime);
-        video.removeEventListener('volumechange',syncVol);
-      };
-    }
-    return {setup,cleanup:()=>{if(cleanup){try{cleanup()}catch{}cleanup=null}}};
-  })();
-
   async function playChannel(c) {
     curChannel = c;
     await StorageService.addHistory(c);
@@ -2119,8 +1746,6 @@ const App = (() => {
     // Progress saver cleanup from previous channel
     if (window._progressSaverClean) { window._progressSaverClean(); window._progressSaverClean = null; }
     const vid = $('#mainVid');
-    VodController.deactivate();
-
     const statusEl = $('#playerStatus');
     $('#playerName').textContent = c.name;
     $('#playerGrp').textContent = c.group || 'Sin categoría';
@@ -2154,10 +1779,6 @@ const App = (() => {
         toast('Error de reproducción: ' + errMsg, 'error');
       }
     );
-    PlayerControls.setup(vid, c);
-
-    VodController.activate(vid, c);
-
     // Movie progress saving (not for LIVE)
     if (c._type === 'pelicula') {
       let _progTimer = null;
@@ -2277,8 +1898,6 @@ const App = (() => {
   }
 
   function stopPlayerInternal() {
-    if (typeof VodController !== 'undefined') VodController.deactivate();
-
     clearTimeout(playerHideTimer);
     closePlayerOptions();
     const vid = $('#mainVid');
@@ -2297,8 +1916,6 @@ const App = (() => {
   }
 
   function stopPlayer() {
-    if (typeof PlayerControls !== 'undefined') PlayerControls.cleanup();
-
     if (playerHistoryActive) {
       window.history.back();
       return;
