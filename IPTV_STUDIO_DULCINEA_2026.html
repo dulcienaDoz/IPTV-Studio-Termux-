@@ -1128,10 +1128,10 @@ const PlayerService = (() => {
       backBufferLength:0,
       liveDurationInfinity:true,
       capLevelToPlayerSize:true,
-      manifestLoadingMaxRetry:4,
-      levelLoadingMaxRetry:4,
-      fragLoadingMaxRetry:4,
-      fragLoadingRetryDelay:1000,
+      manifestLoadingMaxRetry:6,
+      levelLoadingMaxRetry:6,
+      fragLoadingMaxRetry:6,
+      fragLoadingRetryDelay:500,
       startFragPrefetch:true,
       abrEwmaDefaultEstimate:1000000
     });
@@ -1155,9 +1155,19 @@ const PlayerService = (() => {
       if(mode==='live'&&hls===instance)lastProgressAt=Date.now();
     });
     instance.on(Hls.Events.ERROR,(_,data)=>{
-      if(mode!=='live'||hls!==instance||!data?.fatal)return;
-      reconnect(video,sourceUrl,status,error,
-        data.type===Hls.ErrorTypes.NETWORK_ERROR?'red':'media');
+      if(mode!=='live'||hls!==instance||!data)return;
+      if(data.fatal){
+        if(data.type===Hls.ErrorTypes.NETWORK_ERROR){
+          try{instance.startLoad(-1);}catch{}
+        }else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){
+          try{instance.recoverMediaError();}catch{}
+        }
+        setTimeout(()=>{
+          if(mode==='live'&&hls===instance&&!reconnecting&&Date.now()-lastProgressAt>=5000){
+            reconnect(video,sourceUrl,status,error,data.type===Hls.ErrorTypes.NETWORK_ERROR?'red':'media');
+          }
+        },1200);
+      }
     });
     instance.attachMedia(video);
   }
@@ -1180,7 +1190,7 @@ const PlayerService = (() => {
       video.load();
     }catch{}
 
-    await new Promise(r=>setTimeout(r,250));
+    await new Promise(r=>setTimeout(r,350));
     if(mode==='live'){
       try{await createLive(video,sourceUrl,status,error);}
       catch{status('LIVE · no se pudo reconectar','err');}
@@ -1222,10 +1232,18 @@ const PlayerService = (() => {
         lastProgressAt=now;
         return;
       }
-      if(now-lastProgressAt>=3000&&video.readyState<3){
-        reconnect(video,sourceUrl,status,error,'sin señal');
+      if(now-lastProgressAt>=8000&&video.readyState<3){
+        if(hls&&typeof hls.startLoad==='function'){
+          try{hls.startLoad(-1);}catch{}
+        }
+        if(video.paused){
+          video.play().catch(()=>{});
+        }
+        if(now-lastProgressAt>=10000){
+          reconnect(video,sourceUrl,status,error,'sin señal');
+        }
       }
-    },500);
+    },1000);
   }
 
   function stop(video){
