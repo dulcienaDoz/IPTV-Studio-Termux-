@@ -1195,32 +1195,33 @@ const PlayerService = (() => {
   let currentChannel = null;
   let mode = 'idle';
   let watchdog = null;
-  let bufferTimer = null;
   let reconnecting = false;
   let starting = false;
-  let lastProgressAt = 0;
-  let lastTime = -1;
+  let lastFragAt = 0;
+  let lastLevelAt = 0;
+  let lastMediaAdvanceAt = 0;
+  let lastMediaTime = -1;
   let wakeLock = null;
   let wakeLockWanted = false;
+  let liveSourceUrl = '';
 
-  const CFG = Object.freeze({
-    LIVE: Object.freeze({
-      initialTarget: 20,
-      resumeTarget: 12,
-      lowWater: 7,
-      maxBuffer: 32,
-      maxMaxBuffer: 40,
-      maxBufferLength: 12,
-      maxMaxBufferLength: 32
-    }),
-    VOD: Object.freeze({
-      initialTarget: 15,
-      resumeTarget: 8,
-      lowWater: 5,
-      maxBuffer: 45,
-      maxMaxBuffer: 55
-    })
+  const LIVE = Object.freeze({
+    initialLiveManifestSize: 1,
+    maxBufferLength: 10,
+    maxMaxBufferLength: 16,
+    lowBufferSeconds: 2.5,
+    criticalBufferSeconds: 1.0,
+    segmentTimeoutMs: 7500,
+    levelTimeoutMs: 9000,
+    startupGraceMs: 7000,
+    reconnectDelayMs: 500,
+    loaderMaxRetry: 3
   });
+
+  function clearWatchdog() {
+    if (watchdog) clearInterval(watchdog);
+    watchdog = null;
+  }
 
   function destroyHls() {
     if (!hls) return;
@@ -1228,13 +1229,6 @@ const PlayerService = (() => {
     try { hls.detachMedia(); } catch {}
     try { hls.destroy(); } catch {}
     hls = null;
-  }
-
-  function clearTimers() {
-    if (watchdog) clearInterval(watchdog);
-    if (bufferTimer) clearInterval(bufferTimer);
-    watchdog = null;
-    bufferTimer = null;
   }
 
   async function requestWakeLock() {
@@ -1261,88 +1255,51 @@ const PlayerService = (() => {
   async function getStreamUrl(sourceUrl) {
     try {
       const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 1000);
-      const r = await fetch('http://127.0.0.1:8765/health', {
-        cache: 'no-store',
-        signal: ctl.signal
-      });
+      const timer = setTimeout(() => ctl.abort(), 900);
+      const response = await fetch(
+        'http://127.0.0.1:8765/health',
+        { cache: 'no-store', signal: ctl.signal }
+      );
       clearTimeout(timer);
-      if (r.ok) {
+
+      if (response.ok) {
         return 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(sourceUrl);
       }
     } catch {}
     return sourceUrl;
   }
 
-  function isHlsUrl(url) {
-    return /\.m3u8?(?:$|[?#])/i.test(url) ||
-      /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
-      /\/(?:hls|hls_live|live)\//i.test(url);
+  function isLiveLikeUrl(url) {
+    const s = String(url || '');
+    return /\/live(?:\/|$)/i.test(s) ||
+           /\.m3u8?(?:$|[?#])/i.test(s) ||
+           /[?&](?:type|format|output)=m3u8\b/i.test(s) ||
+           /\/(?:hls|hls_live)\//i.test(s) ||
+           /\.m3u(?:$|[?#])/i.test(s);
   }
 
   function isNativeMediaUrl(url) {
-    return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(url) ||
-      /[?&](?:type|format|output)=mp4\b/i.test(url) ||
-      /\/movie(?:\/|$)/i.test(url);
+    const s = String(url || '');
+    return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(s) ||
+           /[?&](?:type|format|output)=mp4\b/i.test(s) ||
+           /\/movie(?:\/|$)/i.test(s);
   }
 
   function bufferAhead(video) {
-    if (!video || !Number.isFinite(video.currentTime) || !video.buffered.length) return 0;
+    if (!video?.buffered?.length || !Number.isFinite(video.currentTime)) return 0;
     const t = video.currentTime;
     for (let i = 0; i < video.buffered.length; i++) {
-      const s = video.buffered.start(i);
-      const e = video.buffered.end(i);
-      if (t >= s - 0.25 && t <= e + 0.25) return Math.max(0, e - t);
+      const start = video.buffered.start(i);
+      const end = video.buffered.end(i);
+      if (t >= start - 0.25 && t <= end + 0.25) {
+        return Math.max(0, end - t);
+      }
     }
     return 0;
   }
 
-  function startBufferMonitor(video, cfg, status) {
-    if (bufferTimer) clearInterval(bufferTimer);
-
-    bufferTimer = setInterval(() => {
-      if (mode === 'idle' || !video || video.ended) return;
-      const ahead = bufferAhead(video);
-      video.dataset.bufferAhead = String(Math.floor(ahead));
-
-      // Never force a seek or download extra data manually.
-      // The media engine/HLS.js owns the actual buffer.
-      if (mode === 'vod' && ahead < cfg.lowWater && !video.paused) {
-        try { video.preload = 'auto'; } catch {}
-      }
-      // HLS.js manages fragment loading; do not force startLoad every second.
-    }, 1000);
-  }
-
-  async function waitForInitialBuffer(video, target, timeout, status, label) {
-    const started = Date.now();
-    status(`${label} · preparando reproducción...`, 'ok');
-    return await new Promise(resolve => {
-      let done = false;
-      const finish = ok => {
-        if (done) return;
-        done = true;
-        clearInterval(poll);
-        for (const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate']) video.removeEventListener(ev,check);
-        resolve(ok);
-      };
-      const check = () => {
-        if (video.ended) return finish(false);
-        const ahead = bufferAhead(video);
-        const elapsed = Date.now() - started;
-        if (video.readyState >= 3 && ahead >= 2) return finish(true);
-        if (video.readyState >= 3 && elapsed >= 2500) return finish(true);
-        if (ahead >= Math.min(target, 8)) return finish(true);
-        if (elapsed >= timeout) return finish(video.readyState >= 2 || ahead > 0);
-      };
-      const poll = setInterval(check,200);
-      for (const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate']) video.addEventListener(ev,check);
-      check();
-    });
-  }
-
-async function reconnectLive(video, sourceUrl, status, error, reason='sin señal') {
-    if (mode !== 'live' || reconnecting) return;
+  async function reconnectLive(video, status, error, reason = 'sin señal') {
+    if (mode !== 'live' || reconnecting || !liveSourceUrl) return;
 
     reconnecting = true;
     starting = true;
@@ -1350,6 +1307,7 @@ async function reconnectLive(video, sourceUrl, status, error, reason='sin señal
 
     const old = hls;
     hls = null;
+
     if (old) {
       try { old.stopLoad(); } catch {}
       try { old.detachMedia(); } catch {}
@@ -1362,7 +1320,8 @@ async function reconnectLive(video, sourceUrl, status, error, reason='sin señal
       video.load();
     } catch {}
 
-    await new Promise(r => setTimeout(r, 700));
+    await new Promise(resolve => setTimeout(resolve, LIVE.reconnectDelayMs));
+
     if (mode !== 'live') {
       reconnecting = false;
       starting = false;
@@ -1370,187 +1329,205 @@ async function reconnectLive(video, sourceUrl, status, error, reason='sin señal
     }
 
     try {
-      await createLive(video, sourceUrl, status, error, true);
+      await createLive(video, liveSourceUrl, status, error, true);
     } catch {
       status('LIVE · no se pudo reconectar', 'err');
     }
 
     reconnecting = false;
-    starting = false;
   }
 
-  async function createLive(video, sourceUrl, status, error, isReconnect=false) {
+  async function createLive(video, sourceUrl, status, error, isReconnect = false) {
     if (mode !== 'live') return;
 
     const playUrl = await getStreamUrl(sourceUrl);
     if (mode !== 'live') return;
 
-    const cfg = CFG.LIVE;
     const instance = new Hls({
       enableWorker: true,
       lowLatencyMode: false,
-      maxBufferLength: cfg.maxBufferLength,
-      maxMaxBufferLength: cfg.maxMaxBufferLength,
+
+      // Start with the smallest viable live manifest and a modest sliding buffer.
+      initialLiveManifestSize: LIVE.initialLiveManifestSize,
+      maxBufferLength: LIVE.maxBufferLength,
+      maxMaxBufferLength: LIVE.maxMaxBufferLength,
       backBufferLength: 0,
       liveDurationInfinity: true,
       capLevelToPlayerSize: true,
-      manifestLoadingMaxRetry: 4,
-      levelLoadingMaxRetry: 4,
-      fragLoadingMaxRetry: 4,
-      fragLoadingRetryDelay: 1000,
+
+      manifestLoadingMaxRetry: LIVE.loaderMaxRetry,
+      levelLoadingMaxRetry: LIVE.loaderMaxRetry,
+      fragLoadingMaxRetry: LIVE.loaderMaxRetry,
+      fragLoadingRetryDelay: 800,
       startFragPrefetch: true,
       abrEwmaDefaultEstimate: 1000000
     });
 
     hls = instance;
-    lastProgressAt = Date.now();
-    lastTime = -1;
+    starting = true;
+    lastFragAt = Date.now();
+    lastLevelAt = Date.now();
+    lastMediaAdvanceAt = Date.now();
+    lastMediaTime = -1;
 
     instance.on(Hls.Events.MEDIA_ATTACHED, () => {
-      if (mode === 'live' && hls === instance) instance.loadSource(playUrl);
+      if (mode === 'live' && hls === instance) {
+        instance.loadSource(playUrl);
+      }
     });
 
-    instance.on(Hls.Events.MANIFEST_PARSED, async () => {
+    instance.on(Hls.Events.MANIFEST_PARSED, () => {
       if (mode !== 'live' || hls !== instance) return;
 
-      lastProgressAt = Date.now();
-      status(isReconnect ? 'LIVE · reconexión establecida' : 'LIVE · conectando...', 'ok');
-
-      const ready = await waitForInitialBuffer(
-        video,
-        cfg.initialTarget,
-        isReconnect ? 7000 : 12000,
-        status,
-        'LIVE'
+      status(
+        isReconnect
+          ? 'LIVE · señal recuperada · iniciando...'
+          : 'LIVE · señal detectada · iniciando...',
+        'ok'
       );
 
-      if (mode !== 'live' || hls !== instance) return;
-
-      if (ready) {
-        video.play().catch(() => status('LIVE · listo · pulsa ▶ para iniciar'));
-        status('LIVE · reproduciendo · buffer protegido', 'ok');
-      } else {
-        // Do not get stuck forever waiting for a buffer target the source
-        // cannot provide.
-        video.play().catch(() => {});
-        status('LIVE · reproduciendo · buffer limitado', 'ok');
-      }
-      starting = false;
+      // Do not wait for a large buffer. Start as soon as the media element
+      // is able to consume the first available media.
+      setTimeout(() => {
+        if (mode !== 'live' || hls !== instance) return;
+        video.play().catch(() => status('LIVE · pulsa ▶ para iniciar'));
+      }, 100);
     });
 
     instance.on(Hls.Events.LEVEL_LOADED, () => {
-      if (mode === 'live' && hls === instance) lastProgressAt = Date.now();
+      if (mode === 'live' && hls === instance) {
+        lastLevelAt = Date.now();
+      }
     });
 
     instance.on(Hls.Events.FRAG_LOADED, () => {
-      if (mode === 'live' && hls === instance) lastProgressAt = Date.now();
+      if (mode !== 'live' || hls !== instance) return;
+      lastFragAt = Date.now();
+      lastLevelAt = Date.now();
+
+      if (starting) {
+        const age = Date.now() - lastFragAt;
+        if (age < 300) {
+          status('LIVE · recibiendo segmentos...', 'ok');
+        }
+      }
     });
 
     instance.on(Hls.Events.ERROR, (_, data) => {
       if (mode !== 'live' || hls !== instance || !data?.fatal) return;
-      reconnectLive(
-        video,
-        sourceUrl,
-        status,
-        error,
-        data.type === Hls.ErrorTypes.NETWORK_ERROR ? 'red' : 'media'
-      );
+
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        reconnectLive(video, status, error, 'red');
+      } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        reconnectLive(video, status, error, 'media');
+      } else {
+        reconnectLive(video, status, error, 'fatal');
+      }
     });
 
     instance.attachMedia(video);
+
+    setTimeout(() => {
+      if (mode === 'live' && hls === instance) {
+        starting = false;
+      }
+    }, LIVE.startupGraceMs);
   }
 
   async function play(channel, video, status, error) {
     stop(video);
     currentChannel = channel;
-    if (!channel?.url || !video) return;
 
+    if (!channel?.url || !video) return;
     const sourceUrl = String(channel.url);
 
-    // ---------------- VOD ----------------
-    if (isNativeMediaUrl(sourceUrl)) {
+    // VOD stays on the existing stable native path.
+    if (isNativeMediaUrl(sourceUrl) && !isLiveLikeUrl(sourceUrl)) {
       mode = 'vod';
-      const cfg = CFG.VOD;
+      liveSourceUrl = '';
 
       try {
         video.preload = 'auto';
         video.src = sourceUrl;
         video.load();
-
         await requestWakeLock();
-        startBufferMonitor(video, cfg, status);
-
-        const ready = await waitForInitialBuffer(
-          video,
-          cfg.initialTarget,
-          10000,
-          status,
-          'VOD'
-        );
-
-        if (mode !== 'vod') return;
-
-        if (ready) {
-          video.play().catch(() => status('VOD · listo · pulsa ▶ para iniciar'));
-          status('VOD · reproduciendo · buffer protegido', 'ok');
-        } else {
-          video.play().catch(() => status('Pulsa ▶ para iniciar'));
-        }
+        video.play().catch(() => status('VOD · pulsa ▶ para iniciar'));
       } catch {
         status('VOD · no se pudo iniciar', 'err');
       }
       return;
     }
 
-    // ---------------- LIVE / HLS ----------------
-    mode = 'live';
-    starting = true;
+    // Anything explicitly marked/looking like /live or m3u/m3u8 is LIVE.
+    if (isLiveLikeUrl(sourceUrl) || !isNativeMediaUrl(sourceUrl)) {
+      mode = 'live';
+      liveSourceUrl = sourceUrl;
 
-    if (!window.Hls || !Hls.isSupported()) {
-      starting = false;
-      error('HLS.js no está disponible.');
+      if (!window.Hls || !Hls.isSupported()) {
+        error('HLS.js no está disponible.');
+        return;
+      }
+
+      clearWatchdog();
+      await requestWakeLock();
+      await createLive(video, liveSourceUrl, status, error, false);
+
+      watchdog = setInterval(() => {
+        if (mode !== 'live' || !hls || hls.destroyed || reconnecting) return;
+
+        const now = Date.now();
+        const ahead = bufferAhead(video);
+        const fragAge = now - lastFragAt;
+        const levelAge = now - lastLevelAt;
+
+        if (Number.isFinite(video.currentTime) &&
+            video.currentTime > lastMediaTime + 0.12) {
+          lastMediaTime = video.currentTime;
+          lastMediaAdvanceAt = now;
+        }
+
+        // Never reconnect because the buffer is merely small.
+        // Reconnect only when segment/playlist delivery has stalled AND
+        // playback has lost its small safety cushion.
+        if (starting) return;
+
+        const fragmentsStalled = fragAge >= LIVE.segmentTimeoutMs;
+        const playlistStalled = levelAge >= LIVE.levelTimeoutMs;
+        const noMediaAdvance = now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs;
+        const critical = ahead <= LIVE.criticalBufferSeconds;
+        const stopped = video.paused || video.readyState < 3;
+
+        if ((fragmentsStalled || playlistStalled) &&
+            noMediaAdvance &&
+            critical &&
+            stopped) {
+          reconnectLive(video, status, error, 'sin segmentos');
+        }
+      }, 1000);
+
       return;
     }
 
-    await requestWakeLock();
-    await createLive(video, sourceUrl, status, error, false);
-
-    clearTimers();
-    // Buffer monitor is independent of reconnect watchdog.
-    startBufferMonitor(video, CFG.LIVE, status);
-
-    watchdog = setInterval(() => {
-      if (mode !== 'live' || !hls || hls.destroyed || reconnecting || starting) return;
-
-      const now = Date.now();
-      const t = Number.isFinite(video.currentTime) ? video.currentTime : -1;
-      const ahead = bufferAhead(video);
-
-      if (t >= 0 && t > lastTime + 0.12) {
-        lastTime = t;
-        lastProgressAt = now;
-      }
-
-      // Protect playback before the buffer is exhausted.
-      if (ahead <= CFG.LIVE.lowWater && !video.paused && !starting) {
-        
-      }
-
-      // If playback is no longer moving and the safety cushion is gone,
-      // perform a full reconnect. This does not use currentTime to "fix" it.
-      if (now - lastProgressAt >= 7000 &&
-          ahead <= 3 &&
-          (video.paused || video.readyState < 3)) {
-        reconnectLive(video, sourceUrl, status, error, 'sin señal');
-      }
-    }, 1000);
+    // Fallback native media.
+    mode = 'vod';
+    liveSourceUrl = '';
+    try {
+      video.preload = 'auto';
+      video.src = sourceUrl;
+      video.load();
+      await requestWakeLock();
+      video.play().catch(() => status('Pulsa ▶ para iniciar'));
+    } catch {
+      status('No se pudo iniciar el contenido', 'err');
+    }
   }
 
   function stop(video) {
     mode = 'idle';
     reconnecting = false;
     starting = false;
-    clearTimers();
+    liveSourceUrl = '';
+    clearWatchdog();
     destroyHls();
     releaseWakeLock();
 
@@ -1561,6 +1538,7 @@ async function reconnectLive(video, sourceUrl, status, error, reason='sin señal
       video.controls = false;
       delete video.dataset.bufferAhead;
     }
+
     currentChannel = null;
   }
 
@@ -1568,7 +1546,7 @@ async function reconnectLive(video, sourceUrl, status, error, reason='sin señal
     play,
     stop,
     getCurrentChannel: () => currentChannel,
-    isHlsUrl,
+    isHlsUrl: isLiveLikeUrl,
     _getHls: () => hls
   };
 })();
