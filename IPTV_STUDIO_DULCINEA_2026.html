@@ -996,6 +996,36 @@ const PlayerService = (() => {
         });
 
         hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
+        let liveNoDvr = false;
+        let liveNoDvrBusy = false;
+        let liveSeekingHandler = null;
+
+        const enableLiveNoDvr = () => {
+          if (liveNoDvr) return;
+          liveNoDvr = true;
+          videoElement.controls = false;
+
+          liveSeekingHandler = () => {
+            if (!liveNoDvr || liveNoDvrBusy || !hls || hls.destroyed) return;
+            const livePos = hls.liveSyncPosition;
+            if (!Number.isFinite(livePos)) return;
+            liveNoDvrBusy = true;
+            try { videoElement.currentTime = livePos; } catch {}
+            setTimeout(() => { liveNoDvrBusy = false; }, 50);
+          };
+
+          videoElement.addEventListener('seeking', liveSeekingHandler);
+
+          // Una sola sincronización inicial; después no movemos el playhead.
+          try {
+            const livePos = hls.liveSyncPosition;
+            if (Number.isFinite(livePos)) videoElement.currentTime = livePos;
+          } catch {}
+        };
+
+
+
+
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           statusCallback('HLS listo. Reproduciendo...', 'ok');
           videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
@@ -1040,7 +1070,12 @@ const PlayerService = (() => {
           if (hls && !hls.destroyed) hls.destroy();
           hls = null;
           retryCount = 0;
-          clearLiveGuards(videoElement);
+          if (liveSeekingHandler) {
+            videoElement.removeEventListener('seeking', liveSeekingHandler);
+          }
+          liveSeekingHandler = null;
+          liveNoDvr = false;
+          liveNoDvrBusy = false;
           videoElement.controls = true;
           statusCallback('Probando reproductor nativo...');
           videoElement.pause();
