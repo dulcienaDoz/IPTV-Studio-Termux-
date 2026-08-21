@@ -1102,7 +1102,7 @@ const PlayerService = (() => {
   let currentChannel = null;
   let abortController = null;
 
-  const MODE = Object.freeze({ IDLE:'idle', LIVE:'live', VOD:'vod' });
+  const MODE = Object.freeze({ IDLE: 'idle', LIVE: 'live', VOD: 'vod' });
   let mode = MODE.IDLE;
   let cleanupMode = null;
   let liveTimer = null;
@@ -1110,380 +1110,444 @@ const PlayerService = (() => {
   let wakeLock = null;
   let wakeLockWanted = false;
 
-  let recoveryBusy = false;
-  let recoveryCount = 0;
-  let vodSourceIndex = 0;
-  const MAX_RECOVERIES = 12;
+  let vodRecoveryBusy = false;
+  let vodRecoveryCount = 0;
+  const VOD_MAX_RECOVERY = 12;
+  let liveRecoveryBusy = false;
+  let vodRecoveryTimer = null;
+  let vodErrorHandler = null;
 
-  function clearTimers(){
-    if(liveTimer) clearInterval(liveTimer);
-    if(vodTimer) clearInterval(vodTimer);
-    liveTimer=null; vodTimer=null;
+  function clearTimers() {
+    if (liveTimer) clearInterval(liveTimer);
+    if (vodTimer) clearInterval(vodTimer);
+    if (vodRecoveryTimer) clearTimeout(vodRecoveryTimer);
+    liveTimer = null;
+    vodTimer = null;
+    vodRecoveryTimer = null;
   }
 
-  async function requestWakeLock(){
-    wakeLockWanted=true;
-    if(!('wakeLock' in navigator)) return;
-    try{
-      if(wakeLock && !wakeLock.released) return;
-      wakeLock=await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener?.('release',()=>{
-        wakeLock=null;
-        if(wakeLockWanted && document.visibilityState==='visible') setTimeout(requestWakeLock,300);
+  async function requestWakeLock() {
+    wakeLockWanted = true;
+    if (!('wakeLock' in navigator)) return;
+    try {
+      if (wakeLock && !wakeLock.released) return;
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener?.('release', () => {
+        wakeLock = null;
+        if (wakeLockWanted && document.visibilityState === 'visible') {
+          setTimeout(() => requestWakeLock(), 300);
+        }
       });
-    }catch{}
+    } catch {}
   }
 
-  async function releaseWakeLock(){
-    wakeLockWanted=false;
-    try{await wakeLock?.release();}catch{}
-    wakeLock=null;
+  async function releaseWakeLock() {
+    wakeLockWanted = false;
+    try { await wakeLock?.release(); } catch {}
+    wakeLock = null;
   }
 
-  function destroyHls(){
-    if(hls){try{hls.destroy();}catch{} hls=null;}
+  function destroyHls() {
+    if (hls) {
+      try { hls.destroy(); } catch {}
+      hls = null;
+    }
   }
 
-  function cleanup(videoElement){
+  function cleanup(videoElement) {
     clearTimers();
-    if(typeof cleanupMode==='function'){try{cleanupMode();}catch{}}
-    cleanupMode=null;
-    mode=MODE.IDLE;
-    recoveryBusy=false;
-    recoveryCount=0;
-    if(videoElement) videoElement.controls=false;
+
+    if (typeof cleanupMode === 'function') {
+      try { cleanupMode(); } catch {}
+    }
+
+    cleanupMode = null;
+    mode = MODE.IDLE;
+    vodRecoveryBusy = false;
+    vodRecoveryCount = 0;
+    liveRecoveryBusy = false;
+
+    if (videoElement) {
+      videoElement.controls = false;
+      // Limpiar cualquier error pendiente
+      try {
+        videoElement.pause();
+        videoElement.removeAttribute('src');
+        videoElement.load();
+      } catch {}
+    }
   }
 
-  document.addEventListener('visibilitychange',()=>{
-    if(document.visibilityState==='visible' && wakeLockWanted) requestWakeLock();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && wakeLockWanted) {
+      requestWakeLock();
+    }
   });
 
-  function isHlsUrl(url){
+  function isHlsUrl(url) {
     return /\.m3u8?(?:$|[?#])/i.test(url) ||
-      /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
-      /\/(?:hls|hls_live|live)\//i.test(url);
+           /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
+           /\/(?:hls|hls_live|live)\//i.test(url);
   }
 
-  function isNativeMediaUrl(url){
+  function isNativeMediaUrl(url) {
     return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(url) ||
-      /[?&](?:type|format|output)=mp4\b/i.test(url) ||
-      /\/movie(?:\/|$)/i.test(url);
+           /[?&](?:type|format|output)=mp4\b/i.test(url) ||
+           /\/movie(?:\/|$)/i.test(url);
   }
 
-  async function fetchWithTimeout(url,timeout=1200){
-    abortController=new AbortController();
-    const id=setTimeout(()=>abortController.abort(),timeout);
-    try{
-      const r=await fetch(url,{signal:abortController.signal,mode:'cors',cache:'no-store'});
-      if(!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.text();
-    }finally{clearTimeout(id);}
-  }
+  async function fetchWithTimeout(url, timeout = 1200) {
+    abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), timeout);
 
-  async function termuxAvailable(){
-    try{
-      await fetchWithTimeout('http://127.0.0.1:8765/health',900);
-      return true;
-    }catch{return false;}
-  }
-
-  async function getTermuxUrl(sourceUrl){
-    if(await termuxAvailable()){
-      return 'http://127.0.0.1:8765/stream?url='+encodeURIComponent(sourceUrl);
+    try {
+      const resp = await fetch(url, {
+        signal: abortController.signal,
+        mode: 'cors',
+        cache: 'no-store'
+      });
+      clearTimeout(timeoutId);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.text();
+    } finally {
+      clearTimeout(timeoutId);
     }
-    return null;
   }
 
-  /*
-   * VOD uses DIRECT first.
-   * A progressive MP4 should normally be fetched by Chrome directly because
-   * the browser can use HTTP Range requests itself. The Termux stream remains
-   * a fallback, not the mandatory transport for every movie.
-   */
-  async function getVodSources(sourceUrl){
-    const list=[sourceUrl];
-    const tx=await getTermuxUrl(sourceUrl);
-    if(tx && tx!==sourceUrl) list.push(tx);
-    return list;
+  async function resolvePlayUrl(sourceUrl) {
+    try {
+      const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 1200);
+      if (health) {
+        return 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(sourceUrl);
+      }
+    } catch {}
+    return sourceUrl;
   }
 
-  async function waitForMetadata(video,timeout=10000){
-    if(Number.isFinite(video.duration) && video.duration>0) return true;
-    return new Promise(resolve=>{
-      let done=false;
-      const finish=ok=>{
-        if(done)return; done=true;
-        video.removeEventListener('loadedmetadata',onMeta);
-        video.removeEventListener('error',onErr);
-        resolve(ok);
-      };
-      const onMeta=()=>finish(true), onErr=()=>finish(false);
-      video.addEventListener('loadedmetadata',onMeta,{once:true});
-      video.addEventListener('error',onErr,{once:true});
-      setTimeout(()=>finish(Number.isFinite(video.duration)&&video.duration>0),timeout);
-    });
-  }
+  async function recoverVod(videoElement, sourceUrl, statusCallback) {
+    if (mode !== MODE.VOD || vodRecoveryBusy || vodRecoveryCount >= VOD_MAX_RECOVERY) return;
 
-  async function reconnectVod(video,sourceUrl,statusCallback){
-    if(mode!==MODE.VOD || recoveryBusy || recoveryCount>=MAX_RECOVERIES || video.ended) return;
+    vodRecoveryBusy = true;
+    vodRecoveryCount++;
 
-    recoveryBusy=true;
-    recoveryCount++;
+    const restoreTime = Number.isFinite(videoElement.currentTime)
+      ? videoElement.currentTime
+      : 0;
 
-    const restore=Number.isFinite(video.currentTime)?video.currentTime:0;
-    statusCallback(`VOD · reconectando (${recoveryCount}/${MAX_RECOVERIES})...`,'err');
-
-    const sources=await getVodSources(sourceUrl);
-    if(!sources.length){
-      recoveryBusy=false;
+    if (videoElement.ended) {
+      vodRecoveryBusy = false;
       return;
     }
 
-    // Alternate direct/Termux on successive failures.
-    vodSourceIndex=(vodSourceIndex+1)%sources.length;
-    const target=sources[vodSourceIndex];
+    statusCallback(`VOD · reconectando (${vodRecoveryCount}/${VOD_MAX_RECOVERY})...`, 'err');
 
-    const delay=Math.min(3500,500*Math.min(recoveryCount,5));
-    setTimeout(async()=>{
-      if(mode!==MODE.VOD){recoveryBusy=false;return;}
+    const backoff = Math.min(8000, 600 * 2 ** Math.min(vodRecoveryCount - 1, 4));
 
-      let ok=false;
-      try{
-        video.pause();
-        video.removeAttribute('src');
-        video.load();
+    if (vodRecoveryTimer) clearTimeout(vodRecoveryTimer);
 
-        video.src=target;
-        video.load();
-
-        ok=await waitForMetadata(video,8000);
-
-        if(ok && mode===MODE.VOD){
-          if(restore>0 && Number.isFinite(video.duration) && video.duration>0){
-            try{video.currentTime=Math.min(restore,Math.max(0,video.duration-.5));}catch{}
-          }
-          await video.play();
-          statusCallback(target.startsWith('http://127.0.0.1:8765/')
-            ? 'VOD reconectado · Termux'
-            : 'VOD reconectado · directo','ok');
-        }
-      }catch{}
-
-      if(!ok && mode===MODE.VOD && sources.length>1){
-        // Immediately try the other transport once.
-        const fallback=sources.find(x=>x!==target);
-        try{
-          video.pause();
-          video.removeAttribute('src');
-          video.load();
-          video.src=fallback;
-          video.load();
-          ok=await waitForMetadata(video,8000);
-          if(ok){
-            if(restore>0 && Number.isFinite(video.duration)&&video.duration>0){
-              try{video.currentTime=Math.min(restore,Math.max(0,video.duration-.5));}catch{}
-            }
-            await video.play();
-            statusCallback(fallback.startsWith('http://127.0.0.1:8765/')
-              ? 'VOD reconectado · Termux'
-              : 'VOD reconectado · directo','ok');
-          }
-        }catch{}
+    vodRecoveryTimer = setTimeout(async () => {
+      if (mode !== MODE.VOD) {
+        vodRecoveryBusy = false;
+        return;
       }
 
-      recoveryBusy=false;
-    },delay);
+      try {
+        // Cache busting para evitar caches de red/middleware
+        const cb = '?_r=' + Date.now() + '&_n=' + vodRecoveryCount;
+        const baseUrl = sourceUrl.includes('?') ? sourceUrl + '&_r=' + Date.now() : sourceUrl + cb;
+        const playUrl = await resolvePlayUrl(baseUrl);
+
+        // Limpieza agresiva del elemento video
+        videoElement.pause();
+        videoElement.removeAttribute('src');
+        try { videoElement.load(); } catch {}
+
+        // Pequeña pausa para que el navegador procese la limpieza
+        await new Promise(r => setTimeout(r, 50));
+
+        if (mode !== MODE.VOD) {
+          vodRecoveryBusy = false;
+          return;
+        }
+
+        videoElement.src = playUrl;
+        try { videoElement.load(); } catch {}
+
+        let recovered = false;
+        let errorOccurred = false;
+
+        const resume = () => {
+          if (mode !== MODE.VOD || recovered) return;
+          recovered = true;
+
+          try {
+            if (restoreTime > 0 && Number.isFinite(videoElement.duration) && videoElement.duration > 0) {
+              const safeTime = Math.min(restoreTime, Math.max(0, videoElement.duration - 0.5));
+              videoElement.currentTime = safeTime;
+            }
+          } catch {}
+
+          videoElement.play().catch(() => {});
+          vodRecoveryBusy = false;
+          statusCallback('VOD reconectado', 'ok');
+        };
+
+        const onRecoverError = () => {
+          if (mode !== MODE.VOD || recovered || errorOccurred) return;
+          errorOccurred = true;
+          videoElement.removeEventListener('loadedmetadata', resume);
+          videoElement.removeEventListener('canplay', resume);
+          videoElement.removeEventListener('error', onRecoverError);
+          vodRecoveryBusy = false;
+          statusCallback(`VOD · error de recuperación (${vodRecoveryCount}/${VOD_MAX_RECOVERY})`, 'err');
+          // Programar siguiente intento automático si quedan reintentos
+          if (vodRecoveryCount < VOD_MAX_RECOVERY) {
+            setTimeout(() => recoverVod(videoElement, sourceUrl, statusCallback), 500);
+          }
+        };
+
+        videoElement.addEventListener('loadedmetadata', resume, { once: true });
+        videoElement.addEventListener('canplay', resume, { once: true });
+        videoElement.addEventListener('error', onRecoverError, { once: true });
+
+        // Safety timeout: si nada ocurre en 10s, liberar el flag
+        setTimeout(() => {
+          if (mode === MODE.VOD && vodRecoveryBusy && !recovered) {
+            vodRecoveryBusy = false;
+            videoElement.removeEventListener('loadedmetadata', resume);
+            videoElement.removeEventListener('canplay', resume);
+            videoElement.removeEventListener('error', onRecoverError);
+          }
+        }, 10000);
+      } catch {
+        vodRecoveryBusy = false;
+      }
+    }, backoff);
   }
 
-  async function play(channel,videoElement,statusCallback,errorCallback){
-    if(!videoElement || !channel?.url)return;
+  async function play(channel, videoElement, statusCallback, errorCallback) {
+    if (!videoElement || !channel?.url) return;
 
+    // Limpieza completa previa
     cleanup(videoElement);
     destroyHls();
     await releaseWakeLock();
 
-    currentChannel=channel;
+    currentChannel = channel;
+
+    // Reset completo del video element
     videoElement.pause();
     videoElement.removeAttribute('src');
-    videoElement.load();
-    document.getElementById('playerFs')?.classList.remove('native-vod','live-mode');
+    try { videoElement.load(); } catch {}
 
-    const sourceUrl=String(channel.url);
-    const nativeSource=isNativeMediaUrl(sourceUrl);
-    const explicitHls=isHlsUrl(sourceUrl);
+    document.getElementById('playerFs')?.classList.remove('native-vod');
+
+    const sourceUrl = String(channel.url);
+    const nativeSource = isNativeMediaUrl(sourceUrl);
+    const explicitHls = isHlsUrl(sourceUrl);
+
+    const playUrl = await resolvePlayUrl(sourceUrl);
 
     // ================= VOD =================
-    if(nativeSource){
-      mode=MODE.VOD;
+    if (nativeSource) {
+      mode = MODE.VOD;
       document.getElementById('playerFs')?.classList.add('native-vod');
-      recoveryCount=0;
-      recoveryBusy=false;
-      vodSourceIndex=0;
+      videoElement.controls = false;
+      vodRecoveryCount = 0;
+      vodRecoveryBusy = false;
 
-      // DIRECT FIRST. This avoids a Termux proxy that only serves the first
-      // chunk of a progressive MP4. Termux is used as a recovery fallback.
-      const sources=await getVodSources(sourceUrl);
-      const initial=sources[0];
+      let lastTime = 0;
+      let lastAdvanceAt = Date.now();
+      let stalled = false;
 
-      let lastTime=0;
-      let lastAdvanceAt=Date.now();
-      let stalled=false;
-
-      const markProgress=()=>{
-        const t=Number.isFinite(videoElement.currentTime)?videoElement.currentTime:0;
-        if(t>lastTime+.12) lastTime=t;
-        lastAdvanceAt=Date.now();
-        stalled=false;
-      };
-      const markStall=()=>{if(!videoElement.ended) stalled=true;};
-      const markError=()=>{if(!videoElement.ended) stalled=true;};
-
-      videoElement.addEventListener('timeupdate',markProgress);
-      videoElement.addEventListener('progress',markProgress);
-      videoElement.addEventListener('waiting',markStall);
-      videoElement.addEventListener('stalled',markStall);
-      videoElement.addEventListener('error',markError);
-
-      cleanupMode=()=>{
-        videoElement.removeEventListener('timeupdate',markProgress);
-        videoElement.removeEventListener('progress',markProgress);
-        videoElement.removeEventListener('waiting',markStall);
-        videoElement.removeEventListener('stalled',markStall);
-        videoElement.removeEventListener('error',markError);
-      };
-
-      /*
-       * Same recovery philosophy as LIVE:
-       * don't wait for a permanent "paused" state. If playback stops advancing,
-       * recreate the transport and resume from the last known position.
-       */
-      vodTimer=setInterval(()=>{
-        if(mode!==MODE.VOD || videoElement.ended)return;
-
-        const now=Date.now();
-        const t=Number.isFinite(videoElement.currentTime)?videoElement.currentTime:0;
-        const noAdvance=now-lastAdvanceAt>=6000;
-        const mediaBlocked=videoElement.readyState<3;
-        const stopped=videoElement.paused && !videoElement.ended && now-lastAdvanceAt>=5000;
-
-        if(stalled || (noAdvance && mediaBlocked) || stopped){
-          reconnectVod(videoElement,sourceUrl,statusCallback);
+      const markProgress = () => {
+        const t = Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0;
+        if (t > lastTime + 0.15) lastTime = t;
+        lastAdvanceAt = Date.now();
+        stalled = false;
+        // Resetear contador de recuperación si va bien durante un tiempo
+        if (vodRecoveryCount > 0 && !vodRecoveryBusy) {
+          vodRecoveryCount = Math.max(0, vodRecoveryCount - 1);
         }
-      },1000);
+      };
+
+      const markStall = () => {
+        if (!videoElement.ended) stalled = true;
+      };
+
+      const onError = (e) => {
+        if (!videoElement.ended && mode === MODE.VOD) {
+          stalled = true;
+          const err = videoElement.error;
+          const code = err ? err.code : '?';
+          statusCallback(`VOD · error ${code} · recuperando...`, 'err');
+          // Forzar recuperación inmediata ante error nativo
+          recoverVod(videoElement, sourceUrl, statusCallback);
+        }
+      };
+
+      videoElement.addEventListener('timeupdate', markProgress);
+      videoElement.addEventListener('progress', markProgress);
+      videoElement.addEventListener('waiting', markStall);
+      videoElement.addEventListener('stalled', markStall);
+      videoElement.addEventListener('error', onError);
+
+      cleanupMode = () => {
+        videoElement.removeEventListener('timeupdate', markProgress);
+        videoElement.removeEventListener('progress', markProgress);
+        videoElement.removeEventListener('waiting', markStall);
+        videoElement.removeEventListener('stalled', markStall);
+        videoElement.removeEventListener('error', onError);
+      };
+
+      // Watchdog de VOD: verifica stall y errores cada 2.5 segundos
+      vodTimer = setInterval(() => {
+        if (mode !== MODE.VOD || videoElement.ended) return;
+
+        const now = Date.now();
+        const currentTime = Number.isFinite(videoElement.currentTime)
+          ? videoElement.currentTime
+          : 0;
+
+        // Si hay un error nativo pendiente, forzar recuperación
+        if (videoElement.error && !vodRecoveryBusy) {
+          recoverVod(videoElement, sourceUrl, statusCallback);
+          return;
+        }
+
+        const noAdvance = now - lastAdvanceAt >= 12000;
+        const looksStalled = stalled || (videoElement.readyState < 2 && noAdvance);
+
+        if (looksStalled && !vodRecoveryBusy) {
+          recoverVod(videoElement, sourceUrl, statusCallback);
+        }
+      }, 2500);
 
       await requestWakeLock();
-      statusCallback('VOD · reproduciendo · conexión automática','ok');
+      statusCallback('VOD · reproduciendo...', 'ok');
+      videoElement.src = playUrl;
+      try { videoElement.load(); } catch {}
 
-      videoElement.src=initial;
-      videoElement.load();
-
-      try{
+      try {
         await videoElement.play();
-      }catch{
+      } catch {
         statusCallback('Pulsa ▶ para iniciar');
       }
       return;
     }
 
     // ================= LIVE / HLS =================
-    mode=MODE.LIVE;
-    document.getElementById('playerFs')?.classList.add('live-mode');
+    mode = MODE.LIVE;
+    const canUseHls = window.Hls && Hls.isSupported();
 
-    const canUseHls=window.Hls && Hls.isSupported();
-    if(!canUseHls || (!explicitHls && !/^https?:\/\//i.test(sourceUrl))){
+    if (!canUseHls || (!explicitHls && !/^https?:\/\//i.test(playUrl))) {
       errorCallback('El contenido LIVE requiere HLS.js y Termux.');
       return;
     }
 
-    const playUrl=await getTermuxUrl(sourceUrl) || sourceUrl;
+    videoElement.controls = false;
 
-    hls=new Hls({
-      enableWorker:true,
-      lowLatencyMode:false,
-      maxBufferLength:10,
-      maxMaxBufferLength:30,
-      backBufferLength:0,
-      liveDurationInfinity:true,
-      capLevelToPlayerSize:true,
-      manifestLoadingMaxRetry:5,
-      levelLoadingMaxRetry:5,
-      fragLoadingMaxRetry:5,
-      fragLoadingRetryDelay:1000,
-      startFragPrefetch:true,
-      abrEwmaDefaultEstimate:1e6
+    hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      maxBufferLength: 10,
+      maxMaxBufferLength: 30,
+      backBufferLength: 0,
+      liveDurationInfinity: true,
+      capLevelToPlayerSize: true,
+      manifestLoadingMaxRetry: 5,
+      levelLoadingMaxRetry: 5,
+      fragLoadingMaxRetry: 5,
+      fragLoadingRetryDelay: 1000,
+      startFragPrefetch: true,
+      abrEwmaDefaultEstimate: 1e6
     });
 
-    let liveSeeking=null;
-    let lastLiveTime=0;
-    let lastLiveAdvanceAt=Date.now();
+    let liveSeeking = null;
+    let lastLiveTime = 0;
+    let lastLiveAdvanceAt = Date.now();
 
-    const enableLive=()=>{
-      if(liveSeeking)return;
-      liveSeeking=()=>{
-        if(recoveryBusy || !hls || hls.destroyed)return;
-        const livePos=hls.liveSyncPosition;
-        if(!Number.isFinite(livePos))return;
-        recoveryBusy=true;
-        try{videoElement.currentTime=livePos;}catch{}
-        setTimeout(()=>{recoveryBusy=false;},75);
+    const enableLive = () => {
+      if (liveSeeking) return;
+
+      liveSeeking = () => {
+        if (liveRecoveryBusy || !hls || hls.destroyed) return;
+        const livePos = hls.liveSyncPosition;
+        if (!Number.isFinite(livePos)) return;
+
+        liveRecoveryBusy = true;
+        try { videoElement.currentTime = livePos; } catch {}
+        setTimeout(() => { liveRecoveryBusy = false; }, 75);
       };
-      videoElement.addEventListener('seeking',liveSeeking);
-      try{
-        const livePos=hls.liveSyncPosition;
-        if(Number.isFinite(livePos))videoElement.currentTime=livePos;
-      }catch{}
-      lastLiveTime=videoElement.currentTime||0;
-      lastLiveAdvanceAt=Date.now();
-      statusCallback('HLS en vivo · reconexión automática · sin DVR','ok');
+
+      videoElement.addEventListener('seeking', liveSeeking);
+
+      try {
+        const livePos = hls.liveSyncPosition;
+        if (Number.isFinite(livePos)) videoElement.currentTime = livePos;
+      } catch {}
+
+      lastLiveTime = videoElement.currentTime || 0;
+      lastLiveAdvanceAt = Date.now();
+      statusCallback('HLS en vivo · sin DVR', 'ok');
     };
 
-    cleanupMode=()=>{
-      if(liveSeeking){try{videoElement.removeEventListener('seeking',liveSeeking);}catch{}}
-      liveSeeking=null;
-      videoElement.controls=false;
+    cleanupMode = () => {
+      if (liveSeeking) {
+        try { videoElement.removeEventListener('seeking', liveSeeking); } catch {}
+      }
+      liveSeeking = null;
+      videoElement.controls = false;
     };
 
-    hls.on(Hls.Events.MEDIA_ATTACHED,()=>hls.loadSource(playUrl));
-    hls.on(Hls.Events.LEVEL_LOADED,(_,data)=>{
-      if(data?.details?.live)enableLive();
+    hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
+
+    hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+      if (data?.details?.live) enableLive();
     });
-    hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
       requestWakeLock();
-      statusCallback('HLS listo · reproduciendo','ok');
-      videoElement.play().catch(()=>statusCallback('Pulsa ▶ para iniciar'));
+      statusCallback('HLS listo. Reproduciendo...', 'ok');
+      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
     });
 
-    liveTimer=setInterval(()=>{
-      if(mode!==MODE.LIVE || !hls || hls.destroyed)return;
+    liveTimer = setInterval(() => {
+      if (mode !== MODE.LIVE || !hls || hls.destroyed) return;
 
-      const now=Date.now();
-      const t=Number.isFinite(videoElement.currentTime)?videoElement.currentTime:0;
+      const now = Date.now();
+      const currentTime = Number.isFinite(videoElement.currentTime)
+        ? videoElement.currentTime
+        : 0;
 
-      if(t>lastLiveTime+.12){
-        lastLiveTime=t;
-        lastLiveAdvanceAt=now;
+      if (currentTime > lastLiveTime + 0.15) {
+        lastLiveTime = currentTime;
+        lastLiveAdvanceAt = now;
         return;
       }
 
-      if((videoElement.readyState<3 || videoElement.paused) &&
-         now-lastLiveAdvanceAt>=6000 && !recoveryBusy){
-        recoveryBusy=true;
-        statusCallback('LIVE · señal perdida · reconectando...','err');
-        try{hls.startLoad(-1);}catch{}
-        lastLiveAdvanceAt=now;
-        setTimeout(()=>{recoveryBusy=false;},2000);
-      }
-    },1000);
+      const stalled = videoElement.readyState < 3 || videoElement.buffered.length === 0;
+      if (stalled && now - lastLiveAdvanceAt >= 12000 && !liveRecoveryBusy) {
+        liveRecoveryBusy = true;
+        statusCallback('LIVE interrumpido · recuperando...', 'err');
 
-    hls.on(Hls.Events.ERROR,(_,data)=>{
-      if(!data?.fatal || mode!==MODE.LIVE)return;
-      if(data.type===Hls.ErrorTypes.NETWORK_ERROR){
-        statusCallback('LIVE · error de red · reconectando...','err');
-        try{hls.startLoad(-1);}catch{}
-      }else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){
-        statusCallback('LIVE · recuperando vídeo...','err');
-        try{hls.recoverMediaError();}catch{}
-      }else{
+        try { hls.startLoad(-1); } catch {}
+
+        lastLiveAdvanceAt = now;
+        setTimeout(() => { liveRecoveryBusy = false; }, 2000);
+      }
+    }, 2500);
+
+    hls.on(Hls.Events.ERROR, (_, data) => {
+      if (!data?.fatal || mode !== MODE.LIVE) return;
+
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        statusCallback('Error de red · recuperando LIVE...', 'err');
+        try { hls.startLoad(-1); } catch {}
+      } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        statusCallback('Recuperando vídeo LIVE...', 'err');
+        try { hls.recoverMediaError(); } catch {}
+      } else {
         errorCallback('La fuente LIVE no responde o no es compatible.');
       }
     });
@@ -1492,26 +1556,35 @@ const PlayerService = (() => {
     hls.attachMedia(videoElement);
   }
 
-  function stop(videoElement){
+  function stop(videoElement) {
     cleanup(videoElement);
     clearTimers();
     releaseWakeLock();
-    document.getElementById('playerFs')?.classList.remove('native-vod','live-mode');
+
+    document.getElementById('playerFs')?.classList.remove('native-vod');
+
     destroyHls();
 
-    if(videoElement){
+    if (videoElement) {
       videoElement.pause();
       videoElement.removeAttribute('src');
-      videoElement.load();
-      videoElement.controls=false;
+      try { videoElement.load(); } catch {}
+      videoElement.controls = false;
     }
 
-    currentChannel=null;
-    if(abortController){try{abortController.abort();}catch{} abortController=null;}
+    currentChannel = null;
+
+    if (abortController) {
+      try { abortController.abort(); } catch {}
+      abortController = null;
+    }
   }
 
-  function getCurrentChannel(){return currentChannel;}
-  return {play,stop,getCurrentChannel,isHlsUrl,_getHls:()=>hls};
+  function getCurrentChannel() {
+    return currentChannel;
+  }
+
+  return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -1634,9 +1707,7 @@ const App = (() => {
     $('#heroTitle').innerHTML = esc(f.name);
     $('#heroSub').textContent = `${f.group || 'Sin categoría'} • Selecciona Reproducir para comenzar.`;
     const bg = $('#heroBg');
-    const fallback = bg.querySelector('.hero-bg-fallback');
-    bg.innerHTML = '';
-    if (fallback) bg.appendChild(fallback);
+    bg.innerHTML = '<div class="hero-bg-fallback"></div>';
     if (f.logo) {
       const img = document.createElement('img');
       img.src = f.logo;
@@ -2023,14 +2094,14 @@ const App = (() => {
   }
 
   function setupPersistentPlayerControls(video, channel) {
-    if (playerControlsClean) { try { playerControlsClean(); } catch {} }
-    playerControlsClean = null;
+    if (playerControlsClean) { try { playerControlsClean(); } catch {} playerControlsClean = null; }
 
     const bar=$('#playerControls'), playBtn=$('#pcPlay'), muteBtn=$('#pcMute');
     const seek=$('#pcSeek'), volume=$('#pcVolume'), current=$('#pcCurrent'), duration=$('#pcDuration');
     if (!bar || !playBtn || !muteBtn || !seek || !volume || !current || !duration) return;
 
-    const isLive = String(channel?._type || '').toLowerCase() === 'live' ||
+    const isLive = String(channel?._type || '').toLowerCase() === 'envivo' ||
+                   String(channel?._type || '').toLowerCase() === 'live' ||
                    String(channel?.type || '').toLowerCase() === 'live' ||
                    /(?:\.m3u8|\/live\/|\/hls)/i.test(String(channel?.url||''));
 
@@ -2053,7 +2124,7 @@ const App = (() => {
       }
     };
 
-    const playClick=e=>{e.preventDefault();e.stopPropagation();video.paused?video.play().catch(()=>{}):video.pause();};
+    const playClick=e=>{if(e&&e.preventDefault)e.preventDefault();if(e&&e.stopPropagation)e.stopPropagation();video.paused?video.play().catch(()=>{}):video.pause();};
     const muteClick=e=>{e.preventDefault();e.stopPropagation();video.muted=!video.muted;syncVol();};
     const volInput=e=>{e.stopPropagation();const v=Math.max(0,Math.min(1,Number(e.target.value)));video.volume=v;video.muted=v===0;syncVol();};
     const seekInput=e=>{
@@ -2235,6 +2306,13 @@ const App = (() => {
   function closePlayerOptions() {
     $('#playerOptionsMenu').classList.remove('open');
   }
+  document.addEventListener('click', (e) => {
+    const menu = $('#playerOptionsMenu');
+    const btn = $('#playerOptionsBtn');
+    if (menu && menu.classList.contains('open') && btn && !menu.contains(e.target) && !btn.contains(e.target)) {
+      closePlayerOptions();
+    }
+  });
 
   function reloadCurrentPlayer() {
     if (!curChannel) return;
@@ -2251,7 +2329,6 @@ const App = (() => {
       $('#playerStatus').className = 'player-status err';
       toast('Error de reproducción: ' + err, 'error');
     });
-    if (typeof setupPersistentPlayerControls === 'function') setupPersistentPlayerControls(vid, c);
   }
 
   function stopPlayerInternal() {
@@ -2343,7 +2420,9 @@ const App = (() => {
 
   // ── Búsqueda ──
   function openSearch() {
+    lastFocusedElement = document.activeElement;
     $('#searchOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
     setTimeout(() => $('#searchInput').focus(), 80);
   }
 
@@ -2354,6 +2433,7 @@ const App = (() => {
     searchResults = [];
     searchShown = 0;
     $('#searchLabel').textContent = 'Escribe para buscar';
+    document.body.style.overflow = '';
   }
 
   function renderSearchResults() {
@@ -2431,9 +2511,11 @@ const App = (() => {
     $('#activePic').textContent = '📂';
 
     // Estado base de navegación: el primer 'Atrás' desde el reproductor vuelve a la app.
-    if (!window.history.state || window.history.state.dulcinea !== 'base') {
-      window.history.replaceState({ dulcinea: 'base' }, '', window.location.href);
-    }
+    try {
+      if (!window.history.state || window.history.state.dulcinea !== 'base') {
+        window.history.replaceState({ dulcinea: 'base' }, '', window.location.href);
+      }
+    } catch(e) {}
 
     try {
       const lastId = localStorage.getItem('ds_last_saved_list');
@@ -2442,13 +2524,18 @@ const App = (() => {
         if (list && Array.isArray(list.channels) && list.channels.length) {
           currentListMeta = { id: list.id, name: list.name, url: list.url, method: list.method, proxy: list.proxy || '', updatedAt: list.updatedAt };
           const withTypes = list.channels.map(c => {
-            c._type = M3UParser.classify(c);
-            return c;
+            const copy = { ...c };
+            copy._type = M3UParser.classify(copy);
+            return copy;
           });
           setChannels(withTypes, { silent: true });
+        } else if (list && (!Array.isArray(list.channels) || !list.channels.length)) {
+          localStorage.removeItem('ds_last_saved_list');
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Error cargando lista guardada:', e);
+    }
 
     // Eventos
     $('#searchToggle').addEventListener('click', openSearch);
@@ -2462,7 +2549,12 @@ const App = (() => {
     $('#playerBack').addEventListener('click', stopPlayer);
     $('#playerFullscreenBtn').addEventListener('click', togglePlayerFullscreen);
     $('#playerOptionsBtn').addEventListener('click', (e) => { e.stopPropagation(); togglePlayerOptions(); showPlayerUI(false); });
-    $('#playerFs').addEventListener('pointermove', () => showPlayerUI(true));
+    let _pmTimer = null;
+    $('#playerFs').addEventListener('pointermove', () => {
+      showPlayerUI(true);
+      clearTimeout(_pmTimer);
+      _pmTimer = setTimeout(() => hidePlayerUI(), 2600);
+    });
     $('#optFullscreen').addEventListener('click', () => togglePlayerFullscreen());
     $('#optMute').addEventListener('click', () => { const v=$('#mainVid'); v.muted=!v.muted; $('#optMute').innerHTML = v.muted ? '🔇&nbsp; Activar sonido' : '🔊&nbsp; Silenciar'; closePlayerOptions(); });
     $('#optPip').addEventListener('click', enterPiP);
@@ -2488,11 +2580,11 @@ const App = (() => {
         closeProfilesInternal();
         return;
       }
-      // Evita que vistas internas abiertas provoquen la salida de la app.
       if (drawerHistoryActive && $('#drawer').classList.contains('open')) { closeDrawerInternal(); return; }
       if ($('#searchOverlay').classList.contains('open')) { closeSearch(); return; }
       if ($('#modalBg').classList.contains('open')) { closeDetail(); return; }
       if ($('#sidebar').classList.contains('open')) { closeSidebar(); return; }
+      if ($('#morePanel').classList.contains('open')) { closeMorePanel(); return; }
     });
     $('#profileRefreshLists').addEventListener('click', refreshProfileSavedLists);
     $('#hamburgerBtn').addEventListener('click', () => {
@@ -3221,7 +3313,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
   async function renderViewMyList() {
     const el = document.getElementById('viewMyList');
     if (!el) return;
-    try { favorites = await StorageService.getFavorites(); } catch {}
+    try { favorites = await StorageService.getFavorites(); } catch(e) { favorites = []; }
     const map = { all: favorites, pelicula: [], series: [], envivo: [] };
     for (const f of favorites) { const ch=channels.find(x=>x.url===f.url); const t=(ch&&ch._type)||'general'; if(map[t]) map[t].push(f); }
     const tabs = [
