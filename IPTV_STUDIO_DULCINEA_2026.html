@@ -1128,9 +1128,9 @@ const PlayerService = (() => {
       backBufferLength:0,
       liveDurationInfinity:true,
       capLevelToPlayerSize:true,
-      manifestLoadingMaxRetry:6,
-      levelLoadingMaxRetry:6,
-      fragLoadingMaxRetry:6,
+      manifestLoadingMaxRetry:4,
+      levelLoadingMaxRetry:4,
+      fragLoadingMaxRetry:4,
       fragLoadingRetryDelay:500,
       startFragPrefetch:true,
       abrEwmaDefaultEstimate:1000000
@@ -1148,7 +1148,7 @@ const PlayerService = (() => {
       status('LIVE · reproduciendo · reconexión automática','ok');
       video.play().catch(()=>status('Pulsa ▶ para iniciar'));
     });
-        instance.on(Hls.Events.LEVEL_LOADED,()=>{
+    instance.on(Hls.Events.LEVEL_LOADED,()=>{
       if(mode==='live'&&hls===instance)lastProgressAt=Date.now();
     });
     instance.on(Hls.Events.FRAG_LOADED,()=>{
@@ -1156,17 +1156,17 @@ const PlayerService = (() => {
     });
     instance.on(Hls.Events.ERROR,(_,data)=>{
       if(mode!=='live'||hls!==instance||!data)return;
+      if(data.type===Hls.ErrorTypes.NETWORK_ERROR){
+        try{instance.startLoad(-1);}catch{}
+      }else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){
+        try{instance.recoverMediaError();}catch{}
+      }
       if(data.fatal){
-        if(data.type===Hls.ErrorTypes.NETWORK_ERROR){
-          try{instance.startLoad(-1);}catch{}
-        }else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){
-          try{instance.recoverMediaError();}catch{}
-        }
         setTimeout(()=>{
-          if(mode==='live'&&hls===instance&&!reconnecting&&Date.now()-lastProgressAt>=5000){
+          if(mode==='live'&&hls===instance&&!reconnecting&&Date.now()-lastProgressAt>=2200){
             reconnect(video,sourceUrl,status,error,data.type===Hls.ErrorTypes.NETWORK_ERROR?'red':'media');
           }
-        },1200);
+        },250);
       }
     });
     instance.attachMedia(video);
@@ -1190,7 +1190,7 @@ const PlayerService = (() => {
       video.load();
     }catch{}
 
-    await new Promise(r=>setTimeout(r,350));
+    await new Promise(r=>setTimeout(r,250));
     if(mode==='live'){
       try{await createLive(video,sourceUrl,status,error);}
       catch{status('LIVE · no se pudo reconectar','err');}
@@ -1232,18 +1232,15 @@ const PlayerService = (() => {
         lastProgressAt=now;
         return;
       }
-      if(now-lastProgressAt>=8000&&video.readyState<3){
-        if(hls&&typeof hls.startLoad==='function'){
-          try{hls.startLoad(-1);}catch{}
-        }
-        if(video.paused){
-          video.play().catch(()=>{});
-        }
-        if(now-lastProgressAt>=10000){
-          reconnect(video,sourceUrl,status,error,'sin señal');
-        }
+      const stalledFor=now-lastProgressAt;
+      if(stalledFor>=2500){
+        try{hls.startLoad(-1);}catch{}
+        if(video.paused)video.play().catch(()=>{});
       }
-    },1000);
+      if(stalledFor>=5000){
+        reconnect(video,sourceUrl,status,error,'sin señal');
+      }
+    },500);
   }
 
   function stop(video){
