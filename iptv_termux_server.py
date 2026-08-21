@@ -10,52 +10,42 @@ ROOT=os.path.dirname(os.path.abspath(__file__))
 INDEX=os.path.join(ROOT,'IPTV_STUDIO_DULCINEA_2026.html')
 MAX_PLAYLIST=50*1024*1024
 BUF=64*1024
+# --- HLS segment RAM cache (never caches live manifests) ---
+HLS_SEG_CACHE_TTL = 20
+HLS_SEG_CACHE_MAX_ITEMS = 80
+HLS_SEG_CACHE_MAX_BYTES = 64 * 1024 * 1024
+_hls_seg_cache = {}
+_hls_seg_bytes = 0
+_hls_seg_lock = threading.RLock()
 
-# Rolling cache used as a safety cushion for live HLS.
-# It is intentionally bounded so Termux RAM usage stays predictable.
-CACHE_TTL=90
-CACHE_MAX_ITEMS=180
-CACHE_MAX_BYTES=96*1024*1024
-cache_lock=threading.RLock()
-hls_cache={}
-cache_bytes=0
-
-def cache_get(url):
-    global cache_bytes
+def _hls_seg_get(url):
+    global _hls_seg_bytes
     now=time.time()
-    with cache_lock:
-        item=hls_cache.get(url)
+    with _hls_seg_lock:
+        item=_hls_seg_cache.get(url)
         if not item:
             return None
-        if now-item['at'] > CACHE_TTL:
-            cache_bytes -= len(item['data'])
-            hls_cache.pop(url, None)
+        if now-item[0] > HLS_SEG_CACHE_TTL:
+            _hls_seg_bytes -= len(item[1])
+            _hls_seg_cache.pop(url,None)
             return None
-        item['at']=now
         return item
 
-def cache_put(url,data,ctype):
-    global cache_bytes
-    with cache_lock:
-        old=hls_cache.pop(url,None)
+def _hls_seg_put(url,data,ctype):
+    global _hls_seg_bytes
+    if not data or len(data) > 16*1024*1024:
+        return
+    with _hls_seg_lock:
+        old=_hls_seg_cache.pop(url,None)
         if old:
-            cache_bytes -= len(old['data'])
-        hls_cache[url]={'data':data,'ctype':ctype or 'application/octet-stream','at':time.time()}
-        cache_bytes += len(data)
-        while len(hls_cache)>CACHE_MAX_ITEMS or cache_bytes>CACHE_MAX_BYTES:
-            k,v=min(hls_cache.items(), key=lambda kv:kv[1]['at'])
-            cache_bytes -= len(v['data'])
-            hls_cache.pop(k,None)
+            _hls_seg_bytes -= len(old[1])
+        _hls_seg_cache[url]=(time.time(),data,ctype or 'application/octet-stream')
+        _hls_seg_bytes += len(data)
+        while len(_hls_seg_cache)>HLS_SEG_CACHE_MAX_ITEMS or _hls_seg_bytes>HLS_SEG_CACHE_MAX_BYTES:
+            k,v=min(_hls_seg_cache.items(),key=lambda kv:kv[1][0])
+            _hls_seg_bytes -= len(v[1])
+            _hls_seg_cache.pop(k,None)
 
-def send_cached(handler,item):
-    data=item['data']
-    handler.send_response(200); cors(handler)
-    handler.send_header('Content-Type',item['ctype'])
-    handler.send_header('Content-Length',str(len(data)))
-    handler.send_header('Cache-Control','no-store')
-    handler.end_headers()
-    handler.wfile.write(data)
-    handler.wfile.flush()
 
 
 def cors(h):
@@ -139,28 +129,8 @@ class Handler(BaseHTTPRequestHandler):
                         line=self.local_proxy_url(absu)
                     out.append(line)
                 data=('\n'.join(out)+'\n').encode('utf-8')
-                ctype='application/vnd.apple.mpegurl; charset=utf-8'
-                if not self.headers.get('Range'):
-                    cache_put(url,data,ctype)
-                self.send_small(200,data,ctype); r.close(); return
-            # Binary segment/file with Range support.
-            # Complete non-range responses are cached so the next playback
-            # request can be served locally without waiting on the origin.
-            if not range_header:
-                data=r.read(CACHE_MAX_BYTES+1)
-                r.close()
-                if len(data) <= CACHE_MAX_BYTES:
-                    cache_put(url,data,ctype or 'application/octet-stream')
-                status=getattr(r,'status',200)
-                self.send_response(status); cors(self)
-                self.send_header('Content-Type',ctype or 'application/octet-stream')
-                self.send_header('Content-Length',str(len(data)))
-                self.send_header('Accept-Ranges','bytes')
-                self.send_header('Cache-Control','no-store')
-                self.end_headers()
-                self.wfile.write(data); self.wfile.flush()
-                return
-
+                self.send_small(200,data,'application/vnd.apple.mpegurl; charset=utf-8'); r.close(); return
+            # Binary stream/file with Range support.
             status=getattr(r,'status',200)
             self.send_response(status); cors(self)
             self.send_header('Content-Type',ctype or 'application/octet-stream')
