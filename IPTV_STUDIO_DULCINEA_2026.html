@@ -915,18 +915,61 @@ const PlayerService = (() => {
           if (!data.fatal) return;
 
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            statusCallback('Error de red. Reintentando...', 'err');
+            statusCallback('Conexión interrumpida. Recuperando...', 'err');
             if (retryCount < MAX_RETRIES) {
               retryCount++;
+              const delay = Math.min(12000, 1500 * retryCount);
               setTimeout(() => {
-                if (hls && !hls.destroyed) hls.startLoad(-1);
-              }, Math.min(8000, 1000 * retryCount));
-            } else if (!isExplicitHls) {
-              // Si la URL no parecía HLS, damos una oportunidad al reproductor
-              // nativo; puede ser MP4/TS u otro formato compatible.
-              fallbackToNative();
+                if (!videoElement || !hls || hls.destroyed) return;
+                try { hls.startLoad(-1); } catch {}
+              }, delay);
             } else {
-              errorCallback('No se pudo conectar después de varios intentos.');
+              // Reconstruir HLS automáticamente en vez de exigir "Actualizar".
+              retryCount = 0;
+              const savedTime = Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0;
+              const wasPlaying = !videoElement.paused;
+              setTimeout(() => {
+                if (!videoElement) return;
+                try { destroyHls(); } catch {}
+                try {
+                  videoElement.pause();
+                  videoElement.removeAttribute('src');
+                  videoElement.load();
+                  statusCallback('Reconectando vídeo...', 'err');
+
+                  const rebuilt = new Hls({
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60,
+                    backBufferLength: 15,
+                    capLevelToPlayerSize: false,
+                    manifestLoadingMaxRetry: 2,
+                    levelLoadingMaxRetry: 2,
+                    fragLoadingMaxRetry: 2,
+                    fragLoadingRetryDelay: 1000,
+                    startFragPrefetch: false
+                  });
+
+                  hls = rebuilt;
+                  rebuilt.on(Hls.Events.MEDIA_ATTACHED, () => rebuilt.loadSource(playUrl));
+                  rebuilt.on(Hls.Events.MANIFEST_PARSED, () => {
+                    statusCallback('Reconectado. Reproduciendo...', 'ok');
+                    if (savedTime > 0) {
+                      try { videoElement.currentTime = savedTime; } catch {}
+                    }
+                    if (wasPlaying) videoElement.play().catch(() => {});
+                  });
+                  rebuilt.on(Hls.Events.ERROR, (_, d) => {
+                    if (d.fatal && d.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                      try { rebuilt.recoverMediaError(); } catch {}
+                    }
+                  });
+                  rebuilt.attachMedia(videoElement);
+                } catch {
+                  errorCallback('No se pudo recuperar la conexión automáticamente.');
+                }
+              }, 2500);
             }
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             statusCallback('Recuperando vídeo...', 'err');
