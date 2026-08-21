@@ -1201,6 +1201,8 @@ const PlayerService = (() => {
   let lastLevelAt = 0;
   let lastMediaAdvanceAt = 0;
   let lastMediaTime = -1;
+  let lastFragSequence = null;
+  let lastFragEnd = 0;
   let wakeLock = null;
   let wakeLockWanted = false;
   let liveSourceUrl = '';
@@ -1208,19 +1210,24 @@ const PlayerService = (() => {
   const LIVE = Object.freeze({
     initialLiveManifestSize: 1,
 
-    // Moderate sliding buffer: enough protection without adding excessive live latency.
-    maxBufferLength: 15,
-    maxMaxBufferLength: 28,
+    // Keep several live fragments ahead without forcing a huge latency.
+    maxBufferLength: 18,
+    maxMaxBufferLength: 32,
 
-    // A short cushion is normal; do not restart just because it falls below target.
+    // These are monitoring thresholds, not a command to stop/restart loading.
     preferredBufferSeconds: 10,
     criticalBufferSeconds: 2,
 
-    // Segment/playlist watchdog. Only a genuinely stalled source triggers rebuild.
-    segmentTimeoutMs: 8000,
-    levelTimeoutMs: 10000,
+    // Give the HLS loader time to fetch the next fragments before reconnecting.
+    segmentTimeoutMs: 9000,
+    levelTimeoutMs: 11000,
+    startupGraceMs: 7000,
 
-    startupGraceMs: 6500,
+    // The player should normally have at least this many fragments between
+    // the playhead and the newest loaded fragment when the source exposes them.
+    preferredFragmentsAhead: 3,
+    minimumFragmentsAhead: 2,
+
     reconnectDelayMs: 600
   });
 
@@ -1303,7 +1310,31 @@ const PlayerService = (() => {
     return 0;
   }
 
-  async function reconnectLive(video, status, error, reason='sin segmentos') {
+  function estimateFragmentsAhead(video) {
+    if (!video?.buffered?.length || !Number.isFinite(video.currentTime)) return 0;
+    const ahead = bufferAhead(video);
+    if (ahead <= 0) return 0;
+
+    // HLS.js exposes fragment information through its stats/events, but the
+    // media element itself does not expose fragment sequence numbers. We
+    // therefore use the loaded fragment duration as a safe approximation.
+    const lastDuration = lastFragEnd > 0 ? lastFragEnd : 4;
+    return Math.max(0, Math.floor(ahead / Math.max(1, lastDuration)));
+  }
+
+  function updateSegmentDiagnostics(video) {
+    const ahead = bufferAhead(video);
+    const fragments = estimateFragmentsAhead(video);
+
+    // Diagnostic-only values. They do not alter currentTime and do not force
+    // the loader to restart.
+    video.dataset.bufferAhead = Math.floor(ahead);
+    video.dataset.fragmentsAhead = String(fragments);
+    video.dataset.lastFragSequence =
+      lastFragSequence == null ? '' : String(lastFragSequence);
+  }
+
+  async function reconnectLive(video, status, error, reason = 'buffer agotado') {
     if (mode !== 'live' || reconnecting || !liveSourceUrl) return;
 
     reconnecting = true;
@@ -1342,7 +1373,7 @@ const PlayerService = (() => {
     reconnecting = false;
   }
 
-  async function createLive(video, sourceUrl, status, error, isReconnect=false) {
+  async function createLive(video, sourceUrl, status, error, isReconnect = false) {
     if (mode !== 'live') return;
 
     const playUrl = await getStreamUrl(sourceUrl);
@@ -1352,10 +1383,10 @@ const PlayerService = (() => {
       enableWorker: true,
       lowLatencyMode: false,
 
-      // Start immediately from the current live manifest.
+      // Start from the current live manifest.
       initialLiveManifestSize: LIVE.initialLiveManifestSize,
 
-      // HLS.js continuously loads fragments as the media buffer needs them.
+      // HLS.js keeps requesting fragments as needed to maintain this window.
       maxBufferLength: LIVE.maxBufferLength,
       maxMaxBufferLength: LIVE.maxMaxBufferLength,
       backBufferLength: 0,
@@ -1378,6 +1409,8 @@ const PlayerService = (() => {
     lastLevelAt = Date.now();
     lastMediaAdvanceAt = Date.now();
     lastMediaTime = -1;
+    lastFragSequence = null;
+    lastFragEnd = 0;
 
     instance.on(Hls.Events.MEDIA_ATTACHED, () => {
       if (mode === 'live' && hls === instance) {
@@ -1394,29 +1427,48 @@ const PlayerService = (() => {
       }, 100);
 
       status(
-        isReconnect ? 'LIVE · señal recuperada...' : 'LIVE · reproduciendo...',
+        isReconnect ? 'LIVE · señal recuperada...' : 'LIVE · descargando segmentos...',
         'ok'
       );
     });
 
-    instance.on(Hls.Events.LEVEL_LOADED, () => {
-      if (mode === 'live' && hls === instance) {
-        lastLevelAt = Date.now();
+    instance.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+      if (mode !== 'live' || hls !== instance) return;
+      lastLevelAt = Date.now();
+
+      // Record the latest playlist details for diagnostics only.
+      if (data?.details?.fragments?.length) {
+        const fragments = data.details.fragments;
+        const last = fragments[fragments.length - 1];
+        if (last) {
+          lastFragEnd = Number(last.duration) || lastFragEnd || 4;
+        }
       }
     });
 
-    instance.on(Hls.Events.FRAG_LOADED, () => {
+    instance.on(Hls.Events.FRAG_LOADED, (_, data) => {
       if (mode !== 'live' || hls !== instance) return;
+
       lastFragAt = Date.now();
       lastLevelAt = Date.now();
+
+      const frag = data?.frag;
+      if (frag) {
+        if (Number.isFinite(frag.sn)) lastFragSequence = frag.sn;
+        if (Number.isFinite(frag.duration) && frag.duration > 0) {
+          lastFragEnd = frag.duration;
+        }
+      }
+
+      updateSegmentDiagnostics(video);
     });
 
     instance.on(Hls.Events.ERROR, (_, data) => {
       if (mode !== 'live' || hls !== instance || !data?.fatal) return;
 
-      // Do not restart while the buffer can still cover a transient network loss.
+      // A buffered cushion absorbs transient network errors.
       if (bufferAhead(video) > LIVE.criticalBufferSeconds) {
-        status('LIVE · protegiendo reproducción...', 'ok');
+        status('LIVE · protegiendo buffer...', 'ok');
         return;
       }
 
@@ -1445,7 +1497,7 @@ const PlayerService = (() => {
 
     const sourceUrl = String(channel.url);
 
-    // VOD/MP4 remains on its stable native path.
+    // VOD/MP4 remains unchanged.
     if (isNativeMediaUrl(sourceUrl) && !isLiveLikeUrl(sourceUrl)) {
       mode = 'vod';
       liveSourceUrl = '';
@@ -1462,7 +1514,7 @@ const PlayerService = (() => {
       return;
     }
 
-    // LIVE/m3u/m3u8 path.
+    // Dedicated LIVE path for /live/...m3u/.m3u8.
     if (isLiveLikeUrl(sourceUrl) || !isNativeMediaUrl(sourceUrl)) {
       mode = 'live';
       liveSourceUrl = sourceUrl;
@@ -1490,21 +1542,23 @@ const PlayerService = (() => {
           lastMediaAdvanceAt = now;
         }
 
-        // Normal operation: leave HLS.js alone. It continuously fetches fragments.
-        // A 10s cushion is preferred but never used as a reconnect trigger.
+        updateSegmentDiagnostics(video);
+
+        // Normal operation: do absolutely nothing. HLS.js owns the loader
+        // and continues requesting the next fragments.
         if (ahead >= LIVE.preferredBufferSeconds) return;
 
-        // Small buffer: still do not force loading. Give the native HLS loader
-        // enough time to fetch the next fragments.
-        const stalled =
+        // Buffer is smaller than preferred, but that is NOT an error.
+        // The loader gets time to fetch the next fragment(s).
+        const deliveryStalled =
           fragAge >= LIVE.segmentTimeoutMs &&
           levelAge >= LIVE.levelTimeoutMs &&
           now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs;
 
-        const empty = ahead <= LIVE.criticalBufferSeconds;
+        const bufferEmpty = ahead <= LIVE.criticalBufferSeconds;
         const playbackStopped = video.paused || video.readyState < 3;
 
-        if (!starting && stalled && empty && playbackStopped) {
+        if (!starting && deliveryStalled && bufferEmpty && playbackStopped) {
           reconnectLive(video, status, error, 'buffer agotado');
         }
       }, 1000);
@@ -1540,6 +1594,8 @@ const PlayerService = (() => {
       try { video.preload = 'metadata'; } catch {}
       video.controls = false;
       delete video.dataset.bufferAhead;
+      delete video.dataset.fragmentsAhead;
+      delete video.dataset.lastFragSequence;
     }
 
     currentChannel = null;
