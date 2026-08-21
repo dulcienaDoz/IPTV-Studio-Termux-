@@ -719,6 +719,13 @@ ul { list-style: none; }
   /* Duration is still available to JS but not rendered on tiny screens. */
   .player-controls.persistent-controls #pcDuration{display:none}
 }
+
+.player-controls.persistent-controls,
+.player-controls.persistent-controls.player-idle{
+  opacity:1!important; visibility:visible!important; pointer-events:auto!important;
+}
+#playerControls{z-index:40!important}
+#playerTopBar{z-index:50!important}
 </style>
 </head>
 <body>
@@ -1303,51 +1310,38 @@ const PlayerService = (() => {
       if (mode === 'vod' && ahead < cfg.lowWater && !video.paused) {
         try { video.preload = 'auto'; } catch {}
       }
-
-      if (mode === 'live' && ahead < cfg.lowWater && hls && !hls.destroyed) {
-        // Keep the HLS engine focused on current live fragments without seeking.
-        try { hls.startLoad(); } catch {}
-      }
+      // HLS.js manages fragment loading; do not force startLoad every second.
     }, 1000);
   }
 
   async function waitForInitialBuffer(video, target, timeout, status, label) {
     const started = Date.now();
-
-    status(`${label} · preparando buffer (${target}s)...`, 'ok');
-
+    status(`${label} · preparando reproducción...`, 'ok');
     return await new Promise(resolve => {
       let done = false;
-
-      const finish = (ok) => {
+      const finish = ok => {
         if (done) return;
         done = true;
         clearInterval(poll);
-        video.removeEventListener('progress', check);
-        video.removeEventListener('canplay', check);
-        video.removeEventListener('timeupdate', check);
+        for (const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate']) video.removeEventListener(ev,check);
         resolve(ok);
       };
-
       const check = () => {
         if (video.ended) return finish(false);
         const ahead = bufferAhead(video);
-        if (ahead >= target) return finish(true);
-
-        // If the browser cannot expose the requested buffer, allow playback
-        // after a safe upper timeout rather than appearing frozen forever.
-        if (Date.now() - started >= timeout) return finish(ahead >= 3);
+        const elapsed = Date.now() - started;
+        if (video.readyState >= 3 && ahead >= 2) return finish(true);
+        if (video.readyState >= 3 && elapsed >= 2500) return finish(true);
+        if (ahead >= Math.min(target, 8)) return finish(true);
+        if (elapsed >= timeout) return finish(video.readyState >= 2 || ahead > 0);
       };
-
-      const poll = setInterval(check, 250);
-      video.addEventListener('progress', check);
-      video.addEventListener('canplay', check);
-      video.addEventListener('timeupdate', check);
+      const poll = setInterval(check,200);
+      for (const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate']) video.addEventListener(ev,check);
       check();
     });
   }
 
-  async function reconnectLive(video, sourceUrl, status, error, reason='sin señal') {
+async function reconnectLive(video, sourceUrl, status, error, reason='sin señal') {
     if (mode !== 'live' || reconnecting) return;
 
     reconnecting = true;
@@ -1539,7 +1533,7 @@ const PlayerService = (() => {
 
       // Protect playback before the buffer is exhausted.
       if (ahead <= CFG.LIVE.lowWater && !video.paused && !starting) {
-        try { hls.startLoad(); } catch {}
+        
       }
 
       // If playback is no longer moving and the safety cushion is gone,
@@ -2039,7 +2033,7 @@ const App = (() => {
     top.classList.remove('player-idle');
     controls.classList.remove('player-idle');
     clearTimeout(playerHideTimer);
-    if (autoHide) playerHideTimer = setTimeout(() => hidePlayerUI(), 2600);
+    if (autoHide) playerHideTimer = setTimeout(() => hidePlayerUI(), 5000);
   }
 
   function hidePlayerUI() {
@@ -2049,8 +2043,8 @@ const App = (() => {
     if (!fs || !top || !controls) return;
     if (document.querySelector('.player-options.open')) return;
     top.classList.add('player-idle');
-    controls.classList.add('player-idle');
-    fs.classList.remove('player-ui-visible');
+    controls.classList.remove('player-idle');
+    fs.classList.add('player-ui-visible');
   }
 
   function togglePlayerUI() {
