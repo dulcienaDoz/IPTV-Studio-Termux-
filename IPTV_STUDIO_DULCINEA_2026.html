@@ -1211,12 +1211,12 @@ const PlayerService = (() => {
     initialLiveManifestSize: 1,
 
     // Keep several live fragments ahead without forcing a huge latency.
-    maxBufferLength: 45,
-    maxMaxBufferLength: 90,
+    maxBufferLength: 18,
+    maxMaxBufferLength: 32,
 
     // These are monitoring thresholds, not a command to stop/restart loading.
-    preferredBufferSeconds: 20,
-    criticalBufferSeconds: 5,
+    preferredBufferSeconds: 10,
+    criticalBufferSeconds: 2,
 
     // Give the HLS loader time to fetch the next fragments before reconnecting.
     segmentTimeoutMs: 9000,
@@ -1225,10 +1225,10 @@ const PlayerService = (() => {
 
     // The player should normally have at least this many fragments between
     // the playhead and the newest loaded fragment when the source exposes them.
-    preferredFragmentsAhead: 6,
-    minimumFragmentsAhead: 3,
+    preferredFragmentsAhead: 3,
+    minimumFragmentsAhead: 2,
 
-    reconnectDelayMs: 1500
+    reconnectDelayMs: 600
   });
 
   function clearWatchdog() {
@@ -1473,11 +1473,11 @@ const PlayerService = (() => {
       }
 
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-        reconnectLive(video, sourceUrl, status, error, 'red');
+        reconnectLive(video, status, error, 'red');
       } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-        reconnectLive(video, sourceUrl, status, error, 'media');
+        reconnectLive(video, status, error, 'media');
       } else {
-        reconnectLive(video, sourceUrl, status, error, 'fatal');
+        reconnectLive(video, status, error, 'fatal');
       }
     });
 
@@ -1551,9 +1551,9 @@ const PlayerService = (() => {
         // Buffer is smaller than preferred, but that is NOT an error.
         // The loader gets time to fetch the next fragment(s).
         const deliveryStalled =
-          fragAge >= LIVE.segmentTimeoutMs * 2 &&
-          levelAge >= LIVE.levelTimeoutMs * 2 &&
-          now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs * 2;
+          fragAge >= LIVE.segmentTimeoutMs &&
+          levelAge >= LIVE.levelTimeoutMs &&
+          now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs;
 
         const bufferEmpty = ahead <= LIVE.criticalBufferSeconds;
         const playbackStopped = video.paused || video.readyState < 3;
