@@ -1205,17 +1205,19 @@ const PlayerService = (() => {
   let wakeLockWanted = false;
   let liveSourceUrl = '';
 
+  // LIVE: build a real safety cushion instead of reacting to every short stall.
   const LIVE = Object.freeze({
     initialLiveManifestSize: 1,
-    maxBufferLength: 10,
-    maxMaxBufferLength: 16,
-    lowBufferSeconds: 2.5,
-    criticalBufferSeconds: 1.0,
-    segmentTimeoutMs: 7500,
-    levelTimeoutMs: 9000,
-    startupGraceMs: 7000,
-    reconnectDelayMs: 500,
-    loaderMaxRetry: 3
+    targetBufferSeconds: 18,
+    minSafeBufferSeconds: 8,
+    criticalBufferSeconds: 1.5,
+    maxBufferLength: 20,
+    maxMaxBufferLength: 35,
+    segmentTimeoutMs: 12000,
+    levelTimeoutMs: 15000,
+    startupGraceMs: 12000,
+    reconnectAfterBufferEmptyMs: 2500,
+    reconnectDelayMs: 600
   });
 
   function clearWatchdog() {
@@ -1252,21 +1254,20 @@ const PlayerService = (() => {
     wakeLock = null;
   }
 
-  async function getStreamUrl(sourceUrl) {
+  async function getStreamUrl(url) {
     try {
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 900);
-      const response = await fetch(
+      const r = await fetch(
         'http://127.0.0.1:8765/health',
         { cache: 'no-store', signal: ctl.signal }
       );
       clearTimeout(timer);
-
-      if (response.ok) {
-        return 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(sourceUrl);
+      if (r.ok) {
+        return 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
       }
     } catch {}
-    return sourceUrl;
+    return url;
   }
 
   function isLiveLikeUrl(url) {
@@ -1298,7 +1299,45 @@ const PlayerService = (() => {
     return 0;
   }
 
-  async function reconnectLive(video, status, error, reason = 'sin señal') {
+  async function waitForSafeLiveBuffer(video, status, maxWait=18000) {
+    const started = Date.now();
+    status('LIVE · cargando buffer protegido...', 'ok');
+
+    return await new Promise(resolve => {
+      let done = false;
+
+      const finish = ok => {
+        if (done) return;
+        done = true;
+        clearInterval(timer);
+        for (const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate']) {
+          video.removeEventListener(ev, check);
+        }
+        resolve(ok);
+      };
+
+      const check = () => {
+        if (mode !== 'live') return finish(false);
+
+        const ahead = bufferAhead(video);
+        const elapsed = Date.now() - started;
+
+        // Prefer a real cushion, but never wait forever if the source exposes
+        // a shorter rolling live window.
+        if (ahead >= LIVE.targetBufferSeconds) return finish(true);
+        if (ahead >= LIVE.minSafeBufferSeconds && elapsed >= 4000) return finish(true);
+        if (elapsed >= maxWait && ahead >= 3) return finish(true);
+      };
+
+      const timer = setInterval(check, 250);
+      for (const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate']) {
+        video.addEventListener(ev, check);
+      }
+      check();
+    });
+  }
+
+  async function reconnectLive(video, status, error, reason='buffer agotado') {
     if (mode !== 'live' || reconnecting || !liveSourceUrl) return;
 
     reconnecting = true;
@@ -1307,7 +1346,6 @@ const PlayerService = (() => {
 
     const old = hls;
     hls = null;
-
     if (old) {
       try { old.stopLoad(); } catch {}
       try { old.detachMedia(); } catch {}
@@ -1320,7 +1358,7 @@ const PlayerService = (() => {
       video.load();
     } catch {}
 
-    await new Promise(resolve => setTimeout(resolve, LIVE.reconnectDelayMs));
+    await new Promise(r => setTimeout(r, LIVE.reconnectDelayMs));
 
     if (mode !== 'live') {
       reconnecting = false;
@@ -1337,7 +1375,7 @@ const PlayerService = (() => {
     reconnecting = false;
   }
 
-  async function createLive(video, sourceUrl, status, error, isReconnect = false) {
+  async function createLive(video, sourceUrl, status, error, isReconnect=false) {
     if (mode !== 'live') return;
 
     const playUrl = await getStreamUrl(sourceUrl);
@@ -1347,7 +1385,6 @@ const PlayerService = (() => {
       enableWorker: true,
       lowLatencyMode: false,
 
-      // Start with the smallest viable live manifest and a modest sliding buffer.
       initialLiveManifestSize: LIVE.initialLiveManifestSize,
       maxBufferLength: LIVE.maxBufferLength,
       maxMaxBufferLength: LIVE.maxMaxBufferLength,
@@ -1355,10 +1392,10 @@ const PlayerService = (() => {
       liveDurationInfinity: true,
       capLevelToPlayerSize: true,
 
-      manifestLoadingMaxRetry: LIVE.loaderMaxRetry,
-      levelLoadingMaxRetry: LIVE.loaderMaxRetry,
-      fragLoadingMaxRetry: LIVE.loaderMaxRetry,
-      fragLoadingRetryDelay: 800,
+      manifestLoadingMaxRetry: 5,
+      levelLoadingMaxRetry: 5,
+      fragLoadingMaxRetry: 5,
+      fragLoadingRetryDelay: 900,
       startFragPrefetch: true,
       abrEwmaDefaultEstimate: 1000000
     });
@@ -1376,22 +1413,26 @@ const PlayerService = (() => {
       }
     });
 
-    instance.on(Hls.Events.MANIFEST_PARSED, () => {
+    instance.on(Hls.Events.MANIFEST_PARSED, async () => {
       if (mode !== 'live' || hls !== instance) return;
 
-      status(
-        isReconnect
-          ? 'LIVE · señal recuperada · iniciando...'
-          : 'LIVE · señal detectada · iniciando...',
-        'ok'
+      const ok = await waitForSafeLiveBuffer(
+        video,
+        status,
+        isReconnect ? 12000 : LIVE.startupGraceMs
       );
 
-      // Do not wait for a large buffer. Start as soon as the media element
-      // is able to consume the first available media.
-      setTimeout(() => {
-        if (mode !== 'live' || hls !== instance) return;
-        video.play().catch(() => status('LIVE · pulsa ▶ para iniciar'));
-      }, 100);
+      if (mode !== 'live' || hls !== instance) return;
+
+      video.play().catch(() => status('LIVE · pulsa ▶ para iniciar'));
+      starting = false;
+
+      status(
+        ok
+          ? 'LIVE · reproduciendo · buffer protegido'
+          : 'LIVE · reproduciendo · buffer limitado',
+        ok ? 'ok' : 'err'
+      );
     });
 
     instance.on(Hls.Events.LEVEL_LOADED, () => {
@@ -1404,44 +1445,37 @@ const PlayerService = (() => {
       if (mode !== 'live' || hls !== instance) return;
       lastFragAt = Date.now();
       lastLevelAt = Date.now();
-
-      if (starting) {
-        const age = Date.now() - lastFragAt;
-        if (age < 300) {
-          status('LIVE · recibiendo segmentos...', 'ok');
-        }
-      }
     });
 
     instance.on(Hls.Events.ERROR, (_, data) => {
       if (mode !== 'live' || hls !== instance || !data?.fatal) return;
 
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-        reconnectLive(video, status, error, 'red');
+        // Do not immediately rebuild the player. The buffered cushion is
+        // intended to absorb transient network errors.
+        if (bufferAhead(video) <= LIVE.criticalBufferSeconds) {
+          reconnectLive(video, status, error, 'error de red');
+        }
       } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-        reconnectLive(video, status, error, 'media');
+        if (bufferAhead(video) <= LIVE.criticalBufferSeconds) {
+          reconnectLive(video, status, error, 'error multimedia');
+        }
       } else {
-        reconnectLive(video, status, error, 'fatal');
+        reconnectLive(video, status, error, 'error fatal');
       }
     });
 
     instance.attachMedia(video);
-
-    setTimeout(() => {
-      if (mode === 'live' && hls === instance) {
-        starting = false;
-      }
-    }, LIVE.startupGraceMs);
   }
 
   async function play(channel, video, status, error) {
     stop(video);
     currentChannel = channel;
-
     if (!channel?.url || !video) return;
+
     const sourceUrl = String(channel.url);
 
-    // VOD stays on the existing stable native path.
+    // VOD remains on the stable native path.
     if (isNativeMediaUrl(sourceUrl) && !isLiveLikeUrl(sourceUrl)) {
       mode = 'vod';
       liveSourceUrl = '';
@@ -1458,7 +1492,6 @@ const PlayerService = (() => {
       return;
     }
 
-    // Anything explicitly marked/looking like /live or m3u/m3u8 is LIVE.
     if (isLiveLikeUrl(sourceUrl) || !isNativeMediaUrl(sourceUrl)) {
       mode = 'live';
       liveSourceUrl = sourceUrl;
@@ -1486,29 +1519,32 @@ const PlayerService = (() => {
           lastMediaAdvanceAt = now;
         }
 
-        // Never reconnect because the buffer is merely small.
-        // Reconnect only when segment/playlist delivery has stalled AND
-        // playback has lost its small safety cushion.
-        if (starting) return;
+        // While the cushion exists, NEVER reconnect simply because the source
+        // had a brief network/playlist pause.
+        if (ahead >= LIVE.minSafeBufferSeconds) {
+          return;
+        }
 
-        const fragmentsStalled = fragAge >= LIVE.segmentTimeoutMs;
-        const playlistStalled = levelAge >= LIVE.levelTimeoutMs;
-        const noMediaAdvance = now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs;
-        const critical = ahead <= LIVE.criticalBufferSeconds;
-        const stopped = video.paused || video.readyState < 3;
+        // Below the cushion, give the network a generous recovery window.
+        // Only rebuild after the actual playback buffer is nearly empty.
+        const deliveryStalled =
+          fragAge >= LIVE.segmentTimeoutMs &&
+          levelAge >= LIVE.levelTimeoutMs;
 
-        if ((fragmentsStalled || playlistStalled) &&
-            noMediaAdvance &&
-            critical &&
-            stopped) {
-          reconnectLive(video, status, error, 'sin segmentos');
+        const playbackStopped =
+          video.paused || video.readyState < 3;
+
+        const bufferEmpty =
+          ahead <= LIVE.criticalBufferSeconds;
+
+        if (!starting && deliveryStalled && playbackStopped && bufferEmpty) {
+          reconnectLive(video, status, error, 'buffer agotado');
         }
       }, 1000);
 
       return;
     }
 
-    // Fallback native media.
     mode = 'vod';
     liveSourceUrl = '';
     try {
