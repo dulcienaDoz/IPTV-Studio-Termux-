@@ -821,10 +821,6 @@ const PlayerService = (() => {
   const MAX_RETRIES = 6;
   let abortController = null;
 
-  function destroyHls() {
-    stopLiveEdgeGuard();
-    if (hls) { hls.destroy(); hls = null; }
-  }
 
   function isHlsUrl(url) {
     return /\.m3u8(?:$|[?#])/i.test(url) ||
@@ -904,14 +900,30 @@ const PlayerService = (() => {
           levelLoadingMaxRetry: 3,
           fragLoadingMaxRetry: 4,
           fragLoadingRetryDelay: 1000,
-          startFragPrefetch: false,
-          liveSyncDurationCount: 3,
-          liveMaxLatencyDurationCount: 8,
-          maxLiveSyncPlaybackRate: 1.1,
-          liveDurationInfinity: true
+          startFragPrefetch: false
         });
 
         hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
+        let liveModeDetected = false;
+        let liveLockBusy = false;
+
+        const enforceLivePosition = () => {
+          if (!liveModeDetected || liveLockBusy || !videoElement || !hls || hls.destroyed) return;
+          liveLockBusy = true;
+          try {
+            const livePos = hls.liveSyncPosition;
+            if (Number.isFinite(livePos)) {
+              videoElement.currentTime = livePos;
+            }
+          } catch {}
+          setTimeout(() => { liveLockBusy = false; }, 0);
+        };
+
+        videoElement.addEventListener('seeking', () => {
+          if (liveModeDetected) enforceLivePosition();
+        });
+
+
         let lastLevelUpdate = Date.now();
         let lastFragmentLoaded = Date.now();
         let liveRecoveryTimer = null;
@@ -925,18 +937,20 @@ const PlayerService = (() => {
         };
 
         const startLiveRecovery = () => {
-          stopLiveRecovery();
+          if (liveRecoveryTimer) clearInterval(liveRecoveryTimer);
           liveRecoveryTimer = setInterval(() => {
             if (!hls || hls.destroyed || !videoElement || videoElement.paused) return;
 
-            const staleLevel = Date.now() - lastLevelUpdate > 15000;
-            const staleFrag = Date.now() - lastFragmentLoaded > 15000;
+            const staleLevel = Date.now() - lastLevelUpdate > 20000;
+            const staleFrag = Date.now() - lastFragmentLoaded > 20000;
 
+            // Solo pedir de nuevo el manifest si realmente dejó de llegar
+            // durante un periodo prolongado. No tocamos currentTime.
             if ((staleLevel || staleFrag) && !liveRecoveryActive) {
               liveRecoveryActive = true;
               statusCallback('Actualizando transmisión...', 'err');
               try { hls.startLoad(-1); } catch {}
-              setTimeout(() => { liveRecoveryActive = false; }, 4000);
+              setTimeout(() => { liveRecoveryActive = false; }, 5000);
             }
           }, 5000);
         };
@@ -944,7 +958,10 @@ const PlayerService = (() => {
         hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
           lastLevelUpdate = Date.now();
           liveRecoveryActive = false;
-          if (data?.details?.live) statusCallback('HLS en vivo. Reproduciendo...', 'ok');
+          if (data?.details?.live) {
+            liveModeDetected = true;
+            statusCallback('HLS en vivo. Reproduciendo...', 'ok');
+          }
         });
 
         hls.on(Hls.Events.FRAG_LOADED, () => {
@@ -1012,6 +1029,18 @@ const PlayerService = (() => {
       errorCallback('Error al iniciar: ' + err.message);
     }
   }
+
+
+  videoElement.addEventListener('durationchange', () => {
+    if (liveNoDvr) {
+      try {
+        if (Number.isFinite(hls?.liveSyncPosition)) {
+          // Keep the browser's playhead at the current live point.
+          // Do not persist duration/currentTime anywhere.
+        }
+      } catch {}
+    }
+  });
 
   function stop(videoElement) {
     destroyHls();
@@ -2144,13 +2173,8 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
       const shell = $('#playerFs');
       if (!vid || !shell || !shell.classList.contains('open')) return;
       if (document.visibilityState === 'visible') {
-        try {
-          const h = PlayerService._getHls?.();
-          if (h && !h.destroyed) {
-            h.startLoad(-1);
-            if (vid.readyState < 3) h.recoverMediaError?.();
-          }
-        } catch {}
+        // Al volver a la página/PiP no forzamos startLoad(), recoverMediaError()
+        // ni currentTime. Dejamos que HLS continúe su flujo normal.
         if (pipWasActive && pipWasPlaying && vid.paused) {
           vid.play().catch(() => {});
         }
