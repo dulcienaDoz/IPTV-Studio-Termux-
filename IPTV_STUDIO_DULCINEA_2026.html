@@ -610,6 +610,40 @@ ul { list-style: none; }
 .termux-help-list { list-style: decimal; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--text-secondary); }
 .termux-help-list code { font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
 
+
+/* ===== VOD · GESTOS Y FEEDBACK ===== */
+.vod-gesture-layer{
+  position:absolute; inset:0; z-index:12; pointer-events:none;
+}
+.vod-zone{
+  position:absolute; top:0; bottom:0; width:38%;
+  border:0; background:transparent; pointer-events:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.vod-zone-left{left:0}
+.vod-zone-right{right:0}
+.vod-gesture-layer.active .vod-zone{pointer-events:auto}
+.vod-seek-feedback{
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%,-50%) scale(.85);
+  min-width:100px; min-height:56px; padding:12px 18px;
+  border-radius:18px;
+  background:rgba(0,0,0,.72);
+  border:1px solid rgba(255,255,255,.16);
+  color:#fff; font-weight:800; font-size:18px;
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none;
+  transition:opacity .12s ease, transform .12s ease;
+  backdrop-filter:blur(10px);
+}
+.vod-seek-feedback.show{
+  opacity:1; transform:translate(-50%,-50%) scale(1);
+}
+.vod-seek-feedback.forward{margin-left:24%}
+.vod-seek-feedback.back{margin-left:-24%}
+@media(max-width:600px){
+  .vod-zone{width:42%}
+}
 </style>
 </head>
 <body>
@@ -746,6 +780,11 @@ ul { list-style: none; }
   </div>
   <video id="mainVid" controls playsinline preload="metadata"></video>
   <div class="player-controls" id="playerControls"></div>
+  <div class="vod-gesture-layer" id="vodGestureLayer" aria-hidden="true">
+    <button class="vod-zone vod-zone-left" id="vodZoneLeft" type="button" aria-label="Retroceder 10 segundos"></button>
+    <button class="vod-zone vod-zone-right" id="vodZoneRight" type="button" aria-label="Avanzar 10 segundos"></button>
+    <div class="vod-seek-feedback" id="vodSeekFeedback"></div>
+  </div>
 </div>
 
 <!-- ===== PROFILES ===== -->
@@ -1738,6 +1777,175 @@ const App = (() => {
     } catch {}
   }
 
+
+  // ── VOD · precarga y gestos (solo para películas/series) ──
+  const VodController = (() => {
+    let active = false;
+    let cleanup = null;
+    let hideTimer = null;
+    let feedbackTimer = null;
+    let lastGesture = 0;
+    let seekAccumulator = 0;
+    let prebufferTimer = null;
+
+    const STEP = 10;
+    const PREBUFFER_TARGET = 18;
+
+    function isVod(channel){
+      const t = String(channel?._type || channel?.type || '').toLowerCase();
+      if (t === 'pelicula' || t === 'pelicula' || t === 'movie' || t === 'vod') return true;
+      const u = String(channel?.url || '');
+      return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(u) ||
+             /\/movie(?:\/|$)/i.test(u);
+    }
+
+    function fmt(sec){
+      sec = Math.max(0, Math.floor(Number(sec) || 0));
+      const h = Math.floor(sec/3600);
+      const m = Math.floor((sec%3600)/60);
+      const s = sec%60;
+      return h
+        ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+        : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function showFeedback(text, kind){
+      const el = document.getElementById('vodSeekFeedback');
+      if (!el) return;
+      clearTimeout(feedbackTimer);
+      el.textContent = text;
+      el.classList.remove('show','forward','back');
+      el.classList.add(kind);
+      requestAnimationFrame(() => el.classList.add('show'));
+      feedbackTimer = setTimeout(() => el.classList.remove('show'), 650);
+    }
+
+    function bufferedAhead(video){
+      if (!video || !Number.isFinite(video.currentTime)) return 0;
+      const t = video.currentTime;
+      const ranges = video.buffered;
+      for(let i=0;i<ranges.length;i++){
+        const start=ranges.start(i), end=ranges.end(i);
+        if(t>=start-0.25 && t<=end+0.25) return Math.max(0, end-t);
+      }
+      return 0;
+    }
+
+    function startPrebufferWatch(video){
+      if(prebufferTimer) clearInterval(prebufferTimer);
+
+      prebufferTimer = setInterval(() => {
+        if(!active || !video || video.paused || video.ended) return;
+
+        // Do not force seek/reload. Only observe the buffer and expose a
+        // conservative "buffer ready" hint through a data attribute.
+        const ahead = bufferedAhead(video);
+        video.dataset.vodBuffer = String(Math.floor(ahead));
+
+        // Encourage the browser to keep the resource warm without changing
+        // playback position or creating a second network request.
+        if(ahead < PREBUFFER_TARGET && Number.isFinite(video.duration) &&
+           video.duration > video.currentTime + 1){
+          try { video.preload = 'auto'; } catch {}
+        }
+      }, 1200);
+    }
+
+    function seekBy(video, delta){
+      if(!active || !video || !Number.isFinite(video.currentTime) ||
+         !Number.isFinite(video.duration) || video.duration <= 0) return;
+
+      const from = video.currentTime;
+      const target = Math.max(0, Math.min(video.duration - 0.25, from + delta));
+      try{
+        video.currentTime = target;
+      }catch{
+        return;
+      }
+
+      const actual = target - from;
+      seekAccumulator += actual;
+
+      if(delta > 0){
+        showFeedback(`+${Math.round(Math.abs(actual || delta))}s  ⏩`, 'forward');
+      }else{
+        showFeedback(`↩ ${Math.round(Math.abs(actual || delta))}s`, 'back');
+      }
+
+      // A seek should not pause a healthy VOD.
+      if(video.paused && !video.ended){
+        video.play().catch(() => {});
+      }
+    }
+
+    function onTapLeft(e){
+      if(e.pointerType === 'mouse' && e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      seekBy(window.__dulcineaMainVideo, -STEP);
+    }
+
+    function onTapRight(e){
+      if(e.pointerType === 'mouse' && e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      seekBy(window.__dulcineaMainVideo, STEP);
+    }
+
+    function activate(video, channel){
+      deactivate();
+
+      if(!isVod(channel)) return false;
+
+      active = true;
+      window.__dulcineaMainVideo = video;
+
+      const layer = document.getElementById('vodGestureLayer');
+      const left = document.getElementById('vodZoneLeft');
+      const right = document.getElementById('vodZoneRight');
+      if(!layer || !left || !right) return false;
+
+      layer.classList.add('active');
+      layer.setAttribute('aria-hidden','false');
+
+      left.addEventListener('pointerup', onTapLeft);
+      right.addEventListener('pointerup', onTapRight);
+
+      // Do not use the player's global click handler for VOD gesture zones.
+      video.preload = 'auto';
+      startPrebufferWatch(video);
+
+      cleanup = () => {
+        active = false;
+        layer.classList.remove('active');
+        layer.setAttribute('aria-hidden','true');
+        left.removeEventListener('pointerup', onTapLeft);
+        right.removeEventListener('pointerup', onTapRight);
+        clearInterval(prebufferTimer);
+        prebufferTimer = null;
+        clearTimeout(feedbackTimer);
+        video.removeAttribute('data-vod-buffer');
+      };
+      return true;
+    }
+
+    function deactivate(){
+      if(cleanup){ try{cleanup();}catch{} }
+      cleanup = null;
+      active = false;
+      window.__dulcineaMainVideo = null;
+      const layer = document.getElementById('vodGestureLayer');
+      if(layer){
+        layer.classList.remove('active');
+        layer.setAttribute('aria-hidden','true');
+      }
+      clearInterval(prebufferTimer);
+      prebufferTimer = null;
+    }
+
+    return { activate, deactivate, isVod };
+  })();
+
   // ── Reproducción ──
   async function playChannel(c) {
     curChannel = c;
@@ -1746,6 +1954,8 @@ const App = (() => {
     // Progress saver cleanup from previous channel
     if (window._progressSaverClean) { window._progressSaverClean(); window._progressSaverClean = null; }
     const vid = $('#mainVid');
+    VodController.deactivate();
+
     const statusEl = $('#playerStatus');
     $('#playerName').textContent = c.name;
     $('#playerGrp').textContent = c.group || 'Sin categoría';
@@ -1779,6 +1989,8 @@ const App = (() => {
         toast('Error de reproducción: ' + errMsg, 'error');
       }
     );
+    VodController.activate(vid, c);
+
     // Movie progress saving (not for LIVE)
     if (c._type === 'pelicula') {
       let _progTimer = null;
@@ -1898,6 +2110,8 @@ const App = (() => {
   }
 
   function stopPlayerInternal() {
+    if (typeof VodController !== 'undefined') VodController.deactivate();
+
     clearTimeout(playerHideTimer);
     closePlayerOptions();
     const vid = $('#mainVid');
