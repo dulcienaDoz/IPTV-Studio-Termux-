@@ -1215,8 +1215,6 @@ const PlayerService = (() => {
     maxMaxBufferLength: 45,
 
     // These are monitoring thresholds, not a command to stop/restart loading.
-    preferredBufferSeconds: 15,
-    criticalBufferSeconds: 3,
 
     // Give the HLS loader time to fetch the next fragments before reconnecting.
     segmentTimeoutMs: 9000,
@@ -1225,8 +1223,6 @@ const PlayerService = (() => {
 
     // The player should normally have at least this many fragments between
     // the playhead and the newest loaded fragment when the source exposes them.
-    preferredFragmentsAhead: 3,
-    minimumFragmentsAhead: 2,
 
     reconnectDelayMs: 600
   });
@@ -1297,43 +1293,6 @@ const PlayerService = (() => {
       /\/movie(?:\/|$)/i.test(s);
   }
 
-  function bufferAhead(video) {
-    if (!video?.buffered?.length || !Number.isFinite(video.currentTime)) return 0;
-    const t = video.currentTime;
-    for (let i = 0; i < video.buffered.length; i++) {
-      const s = video.buffered.start(i);
-      const e = video.buffered.end(i);
-      if (t >= s - 0.25 && t <= e + 0.25) {
-        return Math.max(0, e - t);
-      }
-    }
-    return 0;
-  }
-
-  function estimateFragmentsAhead(video) {
-    if (!video?.buffered?.length || !Number.isFinite(video.currentTime)) return 0;
-    const ahead = bufferAhead(video);
-    if (ahead <= 0) return 0;
-
-    // HLS.js exposes fragment information through its stats/events, but the
-    // media element itself does not expose fragment sequence numbers. We
-    // therefore use the loaded fragment duration as a safe approximation.
-    const lastDuration = lastFragEnd > 0 ? lastFragEnd : 4;
-    return Math.max(0, Math.floor(ahead / Math.max(1, lastDuration)));
-  }
-
-  function updateSegmentDiagnostics(video) {
-    const ahead = bufferAhead(video);
-    const fragments = estimateFragmentsAhead(video);
-
-    // Diagnostic-only values. They do not alter currentTime and do not force
-    // the loader to restart.
-    video.dataset.bufferAhead = Math.floor(ahead);
-    video.dataset.fragmentsAhead = String(fragments);
-    video.dataset.lastFragSequence =
-      lastFragSequence == null ? '' : String(lastFragSequence);
-  }
-
   async function reconnectLive(video, status, error, reason = 'buffer agotado') {
     if (mode !== 'live' || reconnecting || !liveSourceUrl) return;
 
@@ -1382,9 +1341,6 @@ const PlayerService = (() => {
     const instance = new Hls({
       enableWorker: true,
       lowLatencyMode: false,
-      liveSyncDuration: 15,
-      liveMaxLatencyDuration: 45,
-      maxLiveSyncPlaybackRate: 1.05,
 
       // Start from the current live manifest.
       initialLiveManifestSize: LIVE.initialLiveManifestSize,
@@ -1430,7 +1386,7 @@ const PlayerService = (() => {
       }, 100);
 
       status(
-        isReconnect ? 'LIVE · señal recuperada...' : 'LIVE · descargando segmentos...',
+        isReconnect ? 'LIVE · señal recuperada...' : 'LIVE · conectado...',
         'ok'
       );
     });
@@ -1530,39 +1486,27 @@ const PlayerService = (() => {
       clearWatchdog();
       await requestWakeLock();
       await createLive(video, liveSourceUrl, status, error, false);
-
       watchdog = setInterval(() => {
         if (mode !== 'live' || !hls || hls.destroyed || reconnecting) return;
 
         const now = Date.now();
-        const ahead = bufferAhead(video);
-        const fragAge = now - lastFragAt;
-        const levelAge = now - lastLevelAt;
-
         if (Number.isFinite(video.currentTime) &&
             video.currentTime > lastMediaTime + 0.12) {
           lastMediaTime = video.currentTime;
           lastMediaAdvanceAt = now;
         }
 
-        updateSegmentDiagnostics(video);
-
-        // Normal operation: do absolutely nothing. HLS.js owns the loader
-        // and continues requesting the next fragments.
-        if (ahead >= LIVE.preferredBufferSeconds) return;
-
-        // Buffer is smaller than preferred, but that is NOT an error.
-        // The loader gets time to fetch the next fragment(s).
-        const deliveryStalled =
-          fragAge >= LIVE.segmentTimeoutMs * 2 &&
-          levelAge >= LIVE.levelTimeoutMs * 2 &&
+        // No artificial buffer target: only reconnect after a real playback
+        // stall combined with a prolonged lack of playlist/fragment activity.
+        const noMediaProgress =
           now - lastMediaAdvanceAt >= LIVE.segmentTimeoutMs * 2;
+        const noFragments =
+          now - lastFragAt >= LIVE.segmentTimeoutMs * 2;
+        const noLevels =
+          now - lastLevelAt >= LIVE.levelTimeoutMs * 2;
 
-        const bufferEmpty = ahead <= LIVE.criticalBufferSeconds;
-        const playbackStopped = video.paused || video.readyState < 3;
-
-        if (!starting && deliveryStalled && bufferEmpty && playbackStopped) {
-          reconnectLive(video, status, error, 'buffer agotado');
+        if (!starting && !video.paused && noMediaProgress && noFragments && noLevels) {
+          reconnectLive(video, status, error, 'señal perdida');
         }
       }, 1000);
 
@@ -1596,9 +1540,6 @@ const PlayerService = (() => {
       try { video.removeAttribute('src'); video.load(); } catch {}
       try { video.preload = 'metadata'; } catch {}
       video.controls = false;
-      delete video.dataset.bufferAhead;
-      delete video.dataset.fragmentsAhead;
-      delete video.dataset.lastFragSequence;
     }
 
     currentChannel = null;
