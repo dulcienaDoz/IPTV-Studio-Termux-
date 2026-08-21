@@ -821,7 +821,54 @@ const PlayerService = (() => {
   const MAX_RETRIES = 6;
   let abortController = null;
 
+  // Control LIVE: mantener el reproductor cerca del borde en vivo sin
+  // forzar saltos durante una reproducción normal.
+  let liveEdgeTimer = null;
+  function stopLiveEdgeGuard() {
+    if (liveEdgeTimer) {
+      clearInterval(liveEdgeTimer);
+      liveEdgeTimer = null;
+    }
+  }
+
+  function startLiveEdgeGuard() {
+    stopLiveEdgeGuard();
+    liveEdgeTimer = setInterval(() => {
+      try {
+        const v = videoElement;
+        const h = hls;
+        if (!v || !h || h.destroyed || v.paused) return;
+        const details = h.levels?.[h.currentLevel >= 0 ? h.currentLevel : 0]?.details;
+        if (!details || !details.live) return;
+
+        const end = details.edge ?? details.totalduration;
+        if (!Number.isFinite(end)) return;
+
+        // Si el buffer terminó o el retraso respecto al borde live creció
+        // demasiado, pedir nuevos segmentos antes de reconstruir el player.
+        const bufferedEnd = v.buffered.length
+          ? v.buffered.end(v.buffered.length - 1)
+          : v.currentTime;
+        const lag = end - bufferedEnd;
+
+        if (v.readyState < 3 || lag > 12) {
+          try { h.startLoad(-1); } catch {}
+        }
+
+        // Solo recuperar la posición cuando estamos claramente detrás del
+        // borde y el navegador ya no tiene datos reproducibles.
+        if (v.readyState < 2 && lag > 20) {
+          const livePos = h.liveSyncPosition;
+          if (Number.isFinite(livePos)) {
+            try { v.currentTime = livePos; } catch {}
+          }
+        }
+      } catch {}
+    }, 5000);
+  }
+
   function destroyHls() {
+    stopLiveEdgeGuard();
     if (hls) { hls.destroy(); hls = null; }
   }
 
@@ -942,13 +989,16 @@ const PlayerService = (() => {
                     lowLatencyMode: false,
                     maxBufferLength: 30,
                     maxMaxBufferLength: 60,
-                    backBufferLength: 15,
+                    backBufferLength: 10,
                     capLevelToPlayerSize: false,
-                    manifestLoadingMaxRetry: 2,
-                    levelLoadingMaxRetry: 2,
-                    fragLoadingMaxRetry: 2,
+                    manifestLoadingMaxRetry: 4,
+                    levelLoadingMaxRetry: 4,
+                    fragLoadingMaxRetry: 4,
                     fragLoadingRetryDelay: 1000,
-                    startFragPrefetch: false
+                    startFragPrefetch: false,
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 6,
+                    maxLiveSyncPlaybackRate: 1.15
                   });
 
                   hls = rebuilt;
