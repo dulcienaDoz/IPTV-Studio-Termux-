@@ -1205,18 +1205,29 @@ const PlayerService = (() => {
   let wakeLockWanted = false;
   let liveSourceUrl = '';
 
-  // LIVE: build a real safety cushion instead of reacting to every short stall.
+  // LIVE protection:
+  // We intentionally stay behind the live edge so short network interruptions
+  // are absorbed by buffered content instead of immediately reaching the edge.
   const LIVE = Object.freeze({
     initialLiveManifestSize: 1,
-    targetBufferSeconds: 18,
-    minSafeBufferSeconds: 8,
-    criticalBufferSeconds: 1.5,
-    maxBufferLength: 20,
-    maxMaxBufferLength: 35,
-    segmentTimeoutMs: 12000,
-    levelTimeoutMs: 15000,
-    startupGraceMs: 12000,
-    reconnectAfterBufferEmptyMs: 2500,
+
+    // Desired safety cushion behind the live edge.
+    targetBufferSeconds: 30,
+    minimumSafeBufferSeconds: 15,
+
+    // Upper limits accepted by HLS.js. The actual amount depends on the source.
+    maxBufferLength: 45,
+    maxMaxBufferLength: 55,
+
+    // Only reconnect after the cushion has really been consumed.
+    criticalBufferSeconds: 3,
+    segmentTimeoutMs: 15000,
+    levelTimeoutMs: 18000,
+
+    // Give the player enough time to build the cushion.
+    startupMaxWaitMs: 25000,
+    startupMinimumToPlay: 10,
+
     reconnectDelayMs: 600
   });
 
@@ -1289,301 +1300,279 @@ const PlayerService = (() => {
   function bufferAhead(video) {
     if (!video?.buffered?.length || !Number.isFinite(video.currentTime)) return 0;
     const t = video.currentTime;
-    for (let i = 0; i < video.buffered.length; i++) {
-      const start = video.buffered.start(i);
-      const end = video.buffered.end(i);
-      if (t >= start - 0.25 && t <= end + 0.25) {
-        return Math.max(0, end - t);
-      }
+    for (let i=0; i<video.buffered.length; i++) {
+      const s=video.buffered.start(i), e=video.buffered.end(i);
+      if (t >= s-0.25 && t <= e+0.25) return Math.max(0,e-t);
     }
     return 0;
   }
 
-  async function waitForSafeLiveBuffer(video, status, maxWait=18000) {
-    const started = Date.now();
-    status('LIVE · cargando buffer protegido...', 'ok');
+  function liveEdgeDistance(video) {
+    if (!video?.buffered?.length || !Number.isFinite(video.currentTime)) return Infinity;
+    const t=video.currentTime;
+    let latest=-Infinity;
+    for (let i=0;i<video.buffered.length;i++) latest=Math.max(latest,video.buffered.end(i));
+    return latest > -Infinity ? Math.max(0,latest-t) : Infinity;
+  }
 
-    return await new Promise(resolve => {
-      let done = false;
+  async function waitForProtectedBuffer(video,status,maxWait=LIVE.startupMaxWaitMs) {
+    const started=Date.now();
+    status(`LIVE · preparando ${LIVE.targetBufferSeconds}s de protección...`,'ok');
 
-      const finish = ok => {
-        if (done) return;
-        done = true;
+    return await new Promise(resolve=>{
+      let done=false;
+      const finish=(ok)=>{
+        if(done)return;
+        done=true;
         clearInterval(timer);
-        for (const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate']) {
-          video.removeEventListener(ev, check);
-        }
+        for(const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate'])
+          video.removeEventListener(ev,check);
         resolve(ok);
       };
+      const check=()=>{
+        if(mode!=='live') return finish(false);
+        const ahead=bufferAhead(video);
+        const elapsed=Date.now()-started;
 
-      const check = () => {
-        if (mode !== 'live') return finish(false);
+        if(ahead>=LIVE.targetBufferSeconds) return finish(true);
 
-        const ahead = bufferAhead(video);
-        const elapsed = Date.now() - started;
+        // If the source cannot expose 30s, start with a meaningful cushion
+        // rather than freezing the user indefinitely.
+        if(ahead>=LIVE.startupMinimumToPlay &&
+           elapsed>=Math.min(8000,maxWait/2)) return finish(true);
 
-        // Prefer a real cushion, but never wait forever if the source exposes
-        // a shorter rolling live window.
-        if (ahead >= LIVE.targetBufferSeconds) return finish(true);
-        if (ahead >= LIVE.minSafeBufferSeconds && elapsed >= 4000) return finish(true);
-        if (elapsed >= maxWait && ahead >= 3) return finish(true);
+        if(elapsed>=maxWait && ahead>=3) return finish(true);
       };
-
-      const timer = setInterval(check, 250);
-      for (const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate']) {
-        video.addEventListener(ev, check);
-      }
+      const timer=setInterval(check,250);
+      for(const ev of ['progress','canplay','canplaythrough','loadeddata','timeupdate'])
+        video.addEventListener(ev,check);
       check();
     });
   }
 
-  async function reconnectLive(video, status, error, reason='buffer agotado') {
-    if (mode !== 'live' || reconnecting || !liveSourceUrl) return;
+  async function reconnectLive(video,status,error,reason='buffer agotado') {
+    if(mode!=='live'||reconnecting||!liveSourceUrl)return;
 
-    reconnecting = true;
-    starting = true;
-    status(`LIVE · reconectando · ${reason}...`, 'err');
+    reconnecting=true;
+    starting=true;
+    status(`LIVE · reconectando · ${reason}...`,'err');
 
-    const old = hls;
-    hls = null;
-    if (old) {
-      try { old.stopLoad(); } catch {}
-      try { old.detachMedia(); } catch {}
-      try { old.destroy(); } catch {}
+    const old=hls;
+    hls=null;
+    if(old){
+      try{old.stopLoad();}catch{}
+      try{old.detachMedia();}catch{}
+      try{old.destroy();}catch{}
     }
 
-    try {
+    try{
       video.pause();
       video.removeAttribute('src');
       video.load();
-    } catch {}
+    }catch{}
 
-    await new Promise(r => setTimeout(r, LIVE.reconnectDelayMs));
-
-    if (mode !== 'live') {
-      reconnecting = false;
-      starting = false;
+    await new Promise(r=>setTimeout(r,LIVE.reconnectDelayMs));
+    if(mode!=='live'){
+      reconnecting=false;
+      starting=false;
       return;
     }
 
-    try {
-      await createLive(video, liveSourceUrl, status, error, true);
-    } catch {
-      status('LIVE · no se pudo reconectar', 'err');
+    try{
+      await createLive(video,liveSourceUrl,status,error,true);
+    }catch{
+      status('LIVE · no se pudo reconectar','err');
     }
-
-    reconnecting = false;
+    reconnecting=false;
   }
 
-  async function createLive(video, sourceUrl, status, error, isReconnect=false) {
-    if (mode !== 'live') return;
+  async function createLive(video,sourceUrl,status,error,isReconnect=false) {
+    if(mode!=='live')return;
 
-    const playUrl = await getStreamUrl(sourceUrl);
-    if (mode !== 'live') return;
+    const playUrl=await getStreamUrl(sourceUrl);
+    if(mode!=='live')return;
 
-    const instance = new Hls({
-      enableWorker: true,
-      lowLatencyMode: false,
-
-      initialLiveManifestSize: LIVE.initialLiveManifestSize,
-      maxBufferLength: LIVE.maxBufferLength,
-      maxMaxBufferLength: LIVE.maxMaxBufferLength,
-      backBufferLength: 0,
-      liveDurationInfinity: true,
-      capLevelToPlayerSize: true,
-
-      manifestLoadingMaxRetry: 5,
-      levelLoadingMaxRetry: 5,
-      fragLoadingMaxRetry: 5,
-      fragLoadingRetryDelay: 900,
-      startFragPrefetch: true,
-      abrEwmaDefaultEstimate: 1000000
+    const instance=new Hls({
+      enableWorker:true,
+      lowLatencyMode:false,
+      initialLiveManifestSize:LIVE.initialLiveManifestSize,
+      maxBufferLength:LIVE.maxBufferLength,
+      maxMaxBufferLength:LIVE.maxMaxBufferLength,
+      backBufferLength:0,
+      liveDurationInfinity:true,
+      capLevelToPlayerSize:true,
+      manifestLoadingMaxRetry:5,
+      levelLoadingMaxRetry:5,
+      fragLoadingMaxRetry:5,
+      fragLoadingRetryDelay:900,
+      startFragPrefetch:true,
+      abrEwmaDefaultEstimate:1000000
     });
 
-    hls = instance;
-    starting = true;
-    lastFragAt = Date.now();
-    lastLevelAt = Date.now();
-    lastMediaAdvanceAt = Date.now();
-    lastMediaTime = -1;
+    hls=instance;
+    starting=true;
+    lastFragAt=Date.now();
+    lastLevelAt=Date.now();
+    lastMediaAdvanceAt=Date.now();
+    lastMediaTime=-1;
 
-    instance.on(Hls.Events.MEDIA_ATTACHED, () => {
-      if (mode === 'live' && hls === instance) {
-        instance.loadSource(playUrl);
-      }
+    instance.on(Hls.Events.MEDIA_ATTACHED,()=>{
+      if(mode==='live'&&hls===instance) instance.loadSource(playUrl);
     });
 
-    instance.on(Hls.Events.MANIFEST_PARSED, async () => {
-      if (mode !== 'live' || hls !== instance) return;
+    instance.on(Hls.Events.MANIFEST_PARSED,async()=>{
+      if(mode!=='live'||hls!==instance)return;
 
-      const ok = await waitForSafeLiveBuffer(
-        video,
-        status,
-        isReconnect ? 12000 : LIVE.startupGraceMs
-      );
+      const ok=await waitForProtectedBuffer(video,status);
+      if(mode!=='live'||hls!==instance)return;
 
-      if (mode !== 'live' || hls !== instance) return;
-
-      video.play().catch(() => status('LIVE · pulsa ▶ para iniciar'));
-      starting = false;
-
+      video.play().catch(()=>status('LIVE · pulsa ▶ para iniciar'));
+      starting=false;
       status(
-        ok
-          ? 'LIVE · reproduciendo · buffer protegido'
-          : 'LIVE · reproduciendo · buffer limitado',
-        ok ? 'ok' : 'err'
+        ok ? `LIVE · reproduciendo · ${LIVE.targetBufferSeconds}s protegidos`
+           : 'LIVE · reproduciendo · buffer limitado',
+        ok?'ok':'err'
       );
     });
 
-    instance.on(Hls.Events.LEVEL_LOADED, () => {
-      if (mode === 'live' && hls === instance) {
-        lastLevelAt = Date.now();
-      }
+    instance.on(Hls.Events.LEVEL_LOADED,()=>{
+      if(mode==='live'&&hls===instance)lastLevelAt=Date.now();
     });
 
-    instance.on(Hls.Events.FRAG_LOADED, () => {
-      if (mode !== 'live' || hls !== instance) return;
-      lastFragAt = Date.now();
-      lastLevelAt = Date.now();
+    instance.on(Hls.Events.FRAG_LOADED,()=>{
+      if(mode!=='live'||hls!==instance)return;
+      lastFragAt=Date.now();
+      lastLevelAt=Date.now();
     });
 
-    instance.on(Hls.Events.ERROR, (_, data) => {
-      if (mode !== 'live' || hls !== instance || !data?.fatal) return;
+    instance.on(Hls.Events.ERROR,(_,data)=>{
+      if(mode!=='live'||hls!==instance||!data?.fatal)return;
 
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-        // Do not immediately rebuild the player. The buffered cushion is
-        // intended to absorb transient network errors.
-        if (bufferAhead(video) <= LIVE.criticalBufferSeconds) {
-          reconnectLive(video, status, error, 'error de red');
-        }
-      } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-        if (bufferAhead(video) <= LIVE.criticalBufferSeconds) {
-          reconnectLive(video, status, error, 'error multimedia');
-        }
-      } else {
-        reconnectLive(video, status, error, 'error fatal');
+      const ahead=bufferAhead(video);
+      if(data.type===Hls.ErrorTypes.NETWORK_ERROR ||
+         data.type===Hls.ErrorTypes.MEDIA_ERROR){
+        if(ahead<=LIVE.criticalBufferSeconds)
+          reconnectLive(video,status,error,'señal agotada');
+      }else{
+        reconnectLive(video,status,error,'error fatal');
       }
     });
 
     instance.attachMedia(video);
   }
 
-  async function play(channel, video, status, error) {
+  async function play(channel,video,status,error){
     stop(video);
-    currentChannel = channel;
-    if (!channel?.url || !video) return;
+    currentChannel=channel;
+    if(!channel?.url||!video)return;
 
-    const sourceUrl = String(channel.url);
+    const sourceUrl=String(channel.url);
 
-    // VOD remains on the stable native path.
-    if (isNativeMediaUrl(sourceUrl) && !isLiveLikeUrl(sourceUrl)) {
-      mode = 'vod';
-      liveSourceUrl = '';
-
-      try {
-        video.preload = 'auto';
-        video.src = sourceUrl;
+    if(isNativeMediaUrl(sourceUrl)&&!isLiveLikeUrl(sourceUrl)){
+      mode='vod';
+      liveSourceUrl='';
+      try{
+        video.preload='auto';
+        video.src=sourceUrl;
         video.load();
         await requestWakeLock();
-        video.play().catch(() => status('VOD · pulsa ▶ para iniciar'));
-      } catch {
-        status('VOD · no se pudo iniciar', 'err');
+        video.play().catch(()=>status('VOD · pulsa ▶ para iniciar'));
+      }catch{
+        status('VOD · no se pudo iniciar','err');
       }
       return;
     }
 
-    if (isLiveLikeUrl(sourceUrl) || !isNativeMediaUrl(sourceUrl)) {
-      mode = 'live';
-      liveSourceUrl = sourceUrl;
-
-      if (!window.Hls || !Hls.isSupported()) {
+    if(isLiveLikeUrl(sourceUrl)||!isNativeMediaUrl(sourceUrl)){
+      mode='live';
+      liveSourceUrl=sourceUrl;
+      if(!window.Hls||!Hls.isSupported()){
         error('HLS.js no está disponible.');
         return;
       }
 
       clearWatchdog();
       await requestWakeLock();
-      await createLive(video, liveSourceUrl, status, error, false);
+      await createLive(video,liveSourceUrl,status,error,false);
 
-      watchdog = setInterval(() => {
-        if (mode !== 'live' || !hls || hls.destroyed || reconnecting) return;
+      watchdog=setInterval(()=>{
+        if(mode!=='live'||!hls||hls.destroyed||reconnecting)return;
 
-        const now = Date.now();
-        const ahead = bufferAhead(video);
-        const fragAge = now - lastFragAt;
-        const levelAge = now - lastLevelAt;
+        const now=Date.now();
+        const ahead=bufferAhead(video);
+        const edge=liveEdgeDistance(video);
+        const fragAge=now-lastFragAt;
+        const levelAge=now-lastLevelAt;
 
-        if (Number.isFinite(video.currentTime) &&
-            video.currentTime > lastMediaTime + 0.12) {
-          lastMediaTime = video.currentTime;
-          lastMediaAdvanceAt = now;
+        if(Number.isFinite(video.currentTime)&&
+           video.currentTime>lastMediaTime+0.12){
+          lastMediaTime=video.currentTime;
+          lastMediaAdvanceAt=now;
         }
 
-        // While the cushion exists, NEVER reconnect simply because the source
-        // had a brief network/playlist pause.
-        if (ahead >= LIVE.minSafeBufferSeconds) {
-          return;
+        // If the player still has >=15s, NEVER reconnect.
+        if(ahead>=LIVE.minimumSafeBufferSeconds)return;
+
+        // The buffer is low: allow the source more time to refill.
+        const deliveryStalled=
+          fragAge>=LIVE.segmentTimeoutMs &&
+          levelAge>=LIVE.levelTimeoutMs;
+
+        const playbackStopped=video.paused||video.readyState<3;
+        const almostEmpty=ahead<=LIVE.criticalBufferSeconds;
+        const noAdvance=now-lastMediaAdvanceAt>=LIVE.segmentTimeoutMs;
+
+        if(!starting&&deliveryStalled&&playbackStopped&&almostEmpty&&noAdvance){
+          reconnectLive(video,status,error,'buffer agotado');
         }
 
-        // Below the cushion, give the network a generous recovery window.
-        // Only rebuild after the actual playback buffer is nearly empty.
-        const deliveryStalled =
-          fragAge >= LIVE.segmentTimeoutMs &&
-          levelAge >= LIVE.levelTimeoutMs;
-
-        const playbackStopped =
-          video.paused || video.readyState < 3;
-
-        const bufferEmpty =
-          ahead <= LIVE.criticalBufferSeconds;
-
-        if (!starting && deliveryStalled && playbackStopped && bufferEmpty) {
-          reconnectLive(video, status, error, 'buffer agotado');
-        }
-      }, 1000);
+        // Expose diagnostic values without storing media data.
+        video.dataset.bufferAhead=Math.floor(ahead);
+        video.dataset.liveEdgeDistance=Number.isFinite(edge)?Math.floor(edge):'';
+      },1000);
 
       return;
     }
 
-    mode = 'vod';
-    liveSourceUrl = '';
-    try {
-      video.preload = 'auto';
-      video.src = sourceUrl;
+    mode='vod';
+    liveSourceUrl='';
+    try{
+      video.preload='auto';
+      video.src=sourceUrl;
       video.load();
       await requestWakeLock();
-      video.play().catch(() => status('Pulsa ▶ para iniciar'));
-    } catch {
-      status('No se pudo iniciar el contenido', 'err');
+      video.play().catch(()=>status('Pulsa ▶ para iniciar'));
+    }catch{
+      status('No se pudo iniciar el contenido','err');
     }
   }
 
-  function stop(video) {
-    mode = 'idle';
-    reconnecting = false;
-    starting = false;
-    liveSourceUrl = '';
+  function stop(video){
+    mode='idle';
+    reconnecting=false;
+    starting=false;
+    liveSourceUrl='';
     clearWatchdog();
     destroyHls();
     releaseWakeLock();
 
-    if (video) {
-      try { video.pause(); } catch {}
-      try { video.removeAttribute('src'); video.load(); } catch {}
-      try { video.preload = 'metadata'; } catch {}
-      video.controls = false;
+    if(video){
+      try{video.pause();}catch{}
+      try{video.removeAttribute('src');video.load();}catch{}
+      try{video.preload='metadata';}catch{}
+      video.controls=false;
       delete video.dataset.bufferAhead;
+      delete video.dataset.liveEdgeDistance;
     }
-
-    currentChannel = null;
+    currentChannel=null;
   }
 
   return {
     play,
     stop,
-    getCurrentChannel: () => currentChannel,
-    isHlsUrl: isLiveLikeUrl,
-    _getHls: () => hls
+    getCurrentChannel:()=>currentChannel,
+    isHlsUrl:isLiveLikeUrl,
+    _getHls:()=>hls
   };
 })();
 
