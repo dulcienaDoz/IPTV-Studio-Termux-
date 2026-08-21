@@ -822,6 +822,50 @@ const PlayerService = (() => {
   let abortController = null;
 
 
+  // LIVE sin DVR: los canales HLS en vivo no deben conservar una ventana
+  // temporal navegable. No guardamos currentTime ni permitimos seek.
+  let liveNoDvr = false;
+  let liveNoDvrBusy = false;
+
+  function setLiveNoDvr(enabled) {
+    liveNoDvr = !!enabled;
+    if (!liveNoDvr) return;
+
+    try {
+      videoElement.removeAttribute('controlslist');
+      videoElement.setAttribute('controlslist', 'nodownload noplaybackrate');
+    } catch {}
+
+    try {
+      videoElement.currentTime = 0;
+    } catch {}
+  }
+
+  function enforceLiveNoDvr() {
+    if (!liveNoDvr || liveNoDvrBusy || !videoElement || !hls || hls.destroyed) return;
+
+    liveNoDvrBusy = true;
+    try {
+      const livePos = Number.isFinite(hls.liveSyncPosition)
+        ? hls.liveSyncPosition
+        : NaN;
+
+      if (Number.isFinite(livePos)) {
+        videoElement.currentTime = livePos;
+      }
+    } catch {}
+    setTimeout(() => { liveNoDvrBusy = false; }, 0);
+  }
+
+  videoElement.addEventListener('seeking', () => {
+    if (liveNoDvr) enforceLiveNoDvr();
+  });
+
+  function destroyHls() {
+    stopLiveEdgeGuard();
+    if (hls) { hls.destroy(); hls = null; }
+  }
+
   function isHlsUrl(url) {
     return /\.m3u8(?:$|[?#])/i.test(url) ||
            /\.m3u(?:$|[?#])/i.test(url) ||
@@ -904,26 +948,6 @@ const PlayerService = (() => {
         });
 
         hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
-        let liveModeDetected = false;
-        let liveLockBusy = false;
-
-        const enforceLivePosition = () => {
-          if (!liveModeDetected || liveLockBusy || !videoElement || !hls || hls.destroyed) return;
-          liveLockBusy = true;
-          try {
-            const livePos = hls.liveSyncPosition;
-            if (Number.isFinite(livePos)) {
-              videoElement.currentTime = livePos;
-            }
-          } catch {}
-          setTimeout(() => { liveLockBusy = false; }, 0);
-        };
-
-        videoElement.addEventListener('seeking', () => {
-          if (liveModeDetected) enforceLivePosition();
-        });
-
-
         let lastLevelUpdate = Date.now();
         let lastFragmentLoaded = Date.now();
         let liveRecoveryTimer = null;
@@ -959,7 +983,7 @@ const PlayerService = (() => {
           lastLevelUpdate = Date.now();
           liveRecoveryActive = false;
           if (data?.details?.live) {
-            liveModeDetected = true;
+            setLiveNoDvr(true);
             statusCallback('HLS en vivo. Reproduciendo...', 'ok');
           }
         });
@@ -1043,6 +1067,8 @@ const PlayerService = (() => {
   });
 
   function stop(videoElement) {
+    liveNoDvr = false;
+    liveNoDvrBusy = false;
     destroyHls();
     if (videoElement) {
       videoElement.pause();
