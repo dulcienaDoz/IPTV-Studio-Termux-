@@ -648,63 +648,76 @@ ul { list-style: none; }
 /* ===== CONTROLES INFERIORES CORREGIDOS ===== */
 .player-controls.persistent-controls{
   position:absolute;
-  left:0; right:0; bottom:0;
+  left:0;right:0;bottom:0;
   z-index:30;
-  display:flex;
+  display:grid;
+  grid-template-columns:auto auto minmax(0,1fr) auto auto;
   align-items:center;
   gap:8px;
   min-height:58px;
   padding:26px 12px 10px;
   box-sizing:border-box;
-  background:linear-gradient(to top,rgba(0,0,0,.92),rgba(0,0,0,0));
-  opacity:1 !important;
-  visibility:visible !important;
-  pointer-events:auto !important;
+  background:linear-gradient(to top,rgba(0,0,0,.94),rgba(0,0,0,0));
+  opacity:1!important;
+  visibility:visible!important;
+  pointer-events:auto!important;
   touch-action:manipulation;
 }
 .player-controls.persistent-controls.player-idle{
-  opacity:1 !important;
-  visibility:visible !important;
-  pointer-events:auto !important;
+  opacity:1!important;visibility:visible!important;pointer-events:auto!important;
 }
 .player-controls.persistent-controls .pc-btn{
-  width:38px;height:38px;flex:0 0 38px;
+  width:38px;height:38px;
+  flex:none;
   border:0;border-radius:50%;
-  background:rgba(0,0,0,.72);color:#fff;
+  background:rgba(0,0,0,.72);
+  color:#fff;
   display:flex;align-items:center;justify-content:center;
-  font-size:16px;line-height:1;
-  padding:0;
+  font-size:16px;line-height:1;padding:0;
   -webkit-tap-highlight-color:transparent;
   touch-action:manipulation;
 }
 .player-controls.persistent-controls .pc-time{
-  flex:0 0 auto;
-  min-width:38px;
+  min-width:34px;
+  max-width:48px;
   color:#fff;
-  font:11px/1 monospace;
+  font:10px/1 monospace;
   text-align:center;
   user-select:none;
+  overflow:hidden;
 }
 .player-controls.persistent-controls .pc-seek{
-  flex:1 1 auto;
-  min-width:45px;
+  width:100%;
+  min-width:50px;
+  margin:0;
   accent-color:#fff;
   touch-action:pan-x;
 }
 .player-controls.persistent-controls .pc-volume{
-  flex:0 0 70px;
-  width:70px;
+  width:68px;
+  min-width:46px;
+  margin:0;
   accent-color:#fff;
   touch-action:pan-x;
 }
-.player-controls.persistent-controls input{
-  margin:0;
-}
-@media(max-width:600px){
-  .player-controls.persistent-controls{gap:5px;padding:24px 7px 8px}
-  .player-controls.persistent-controls .pc-btn{width:36px;height:36px;flex-basis:36px}
-  .player-controls.persistent-controls .pc-time{min-width:32px;font-size:10px}
-  .player-controls.persistent-controls .pc-volume{flex-basis:54px;width:54px}
+@media(max-width:560px){
+  .player-controls.persistent-controls{
+    grid-template-columns:auto minmax(0,1fr) auto;
+    gap:7px;
+    padding:24px 8px 8px;
+  }
+  .player-controls.persistent-controls .pc-time{
+    display:none;
+  }
+  .player-controls.persistent-controls .pc-volume{
+    width:58px;
+    min-width:50px;
+  }
+  .player-controls.persistent-controls .pc-btn{
+    width:36px;height:36px;
+  }
+  /* Duration is still available to JS but not rendered on tiny screens. */
+  .player-controls.persistent-controls #pcDuration{display:none}
 }
 </style>
 </head>
@@ -1171,185 +1184,399 @@ const M3UParser = (() => {
 //  SERVICIO DE REPRODUCTOR (HLS + fallback mejorado)
 // ═══════════════════════════════════════════════════
 const PlayerService = (() => {
-  let hls=null, currentChannel=null, mode='idle', watchdog=null;
-  let reconnecting=false, lastProgressAt=0, lastTime=-1, wakeLock=null, wakeLockWanted=false;
+  let hls = null;
+  let currentChannel = null;
+  let mode = 'idle';
+  let watchdog = null;
+  let bufferTimer = null;
+  let reconnecting = false;
+  let starting = false;
+  let lastProgressAt = 0;
+  let lastTime = -1;
+  let wakeLock = null;
+  let wakeLockWanted = false;
 
-  function destroyHls(){
-    if(!hls)return;
-    try{hls.stopLoad();}catch{}
-    try{hls.detachMedia();}catch{}
-    try{hls.destroy();}catch{}
-    hls=null;
+  const CFG = Object.freeze({
+    LIVE: Object.freeze({
+      initialTarget: 20,
+      resumeTarget: 12,
+      lowWater: 7,
+      maxBuffer: 32,
+      maxMaxBuffer: 40,
+      maxBufferLength: 12,
+      maxMaxBufferLength: 32
+    }),
+    VOD: Object.freeze({
+      initialTarget: 15,
+      resumeTarget: 8,
+      lowWater: 5,
+      maxBuffer: 45,
+      maxMaxBuffer: 55
+    })
+  });
+
+  function destroyHls() {
+    if (!hls) return;
+    try { hls.stopLoad(); } catch {}
+    try { hls.detachMedia(); } catch {}
+    try { hls.destroy(); } catch {}
+    hls = null;
   }
-  function clearWatchdog(){
-    if(watchdog)clearInterval(watchdog);
-    watchdog=null;
+
+  function clearTimers() {
+    if (watchdog) clearInterval(watchdog);
+    if (bufferTimer) clearInterval(bufferTimer);
+    watchdog = null;
+    bufferTimer = null;
   }
-  async function requestWakeLock(){
-    wakeLockWanted=true;
-    if(!('wakeLock' in navigator))return;
-    try{
-      if(wakeLock&&!wakeLock.released)return;
-      wakeLock=await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener?.('release',()=>{
-        wakeLock=null;
-        if(wakeLockWanted&&document.visibilityState==='visible')setTimeout(requestWakeLock,300);
+
+  async function requestWakeLock() {
+    wakeLockWanted = true;
+    if (!('wakeLock' in navigator)) return;
+    try {
+      if (wakeLock && !wakeLock.released) return;
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener?.('release', () => {
+        wakeLock = null;
+        if (wakeLockWanted && document.visibilityState === 'visible') {
+          setTimeout(requestWakeLock, 300);
+        }
       });
-    }catch{}
+    } catch {}
   }
-  async function releaseWakeLock(){
-    wakeLockWanted=false;
-    try{await wakeLock?.release();}catch{}
-    wakeLock=null;
+
+  async function releaseWakeLock() {
+    wakeLockWanted = false;
+    try { await wakeLock?.release(); } catch {}
+    wakeLock = null;
   }
-  async function getStreamUrl(url){
-    try{
-      const ctl=new AbortController();
-      const timer=setTimeout(()=>ctl.abort(),1000);
-      const r=await fetch('http://127.0.0.1:8765/health',{cache:'no-store',signal:ctl.signal});
+
+  async function getStreamUrl(sourceUrl) {
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1000);
+      const r = await fetch('http://127.0.0.1:8765/health', {
+        cache: 'no-store',
+        signal: ctl.signal
+      });
       clearTimeout(timer);
-      if(r.ok)return 'http://127.0.0.1:8765/stream?url='+encodeURIComponent(url);
-    }catch{}
-    return url;
+      if (r.ok) {
+        return 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(sourceUrl);
+      }
+    } catch {}
+    return sourceUrl;
   }
-  function isHlsUrl(url){
-    return /\.m3u8?(?:$|[?#])/i.test(url)||
-      /[?&](?:type|format|output)=m3u8\b/i.test(url)||
+
+  function isHlsUrl(url) {
+    return /\.m3u8?(?:$|[?#])/i.test(url) ||
+      /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
       /\/(?:hls|hls_live|live)\//i.test(url);
   }
-  function isNativeMediaUrl(url){
-    return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(url)||
-      /[?&](?:type|format|output)=mp4\b/i.test(url)||
+
+  function isNativeMediaUrl(url) {
+    return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(url) ||
+      /[?&](?:type|format|output)=mp4\b/i.test(url) ||
       /\/movie(?:\/|$)/i.test(url);
   }
 
-  async function createLive(video,sourceUrl,status,error){
-    if(mode!=='live')return;
-    const playUrl=await getStreamUrl(sourceUrl);
-    if(mode!=='live')return;
-
-    const instance=new Hls({
-      enableWorker:true,
-      lowLatencyMode:false,
-      maxBufferLength:10,
-      maxMaxBufferLength:30,
-      backBufferLength:0,
-      liveDurationInfinity:true,
-      capLevelToPlayerSize:true,
-      manifestLoadingMaxRetry:4,
-      levelLoadingMaxRetry:4,
-      fragLoadingMaxRetry:4,
-      fragLoadingRetryDelay:1000,
-      startFragPrefetch:true,
-      abrEwmaDefaultEstimate:1000000
-    });
-    hls=instance;
-    lastProgressAt=Date.now();
-    lastTime=-1;
-
-    instance.on(Hls.Events.MEDIA_ATTACHED,()=>{
-      if(mode==='live'&&hls===instance)instance.loadSource(playUrl);
-    });
-    instance.on(Hls.Events.MANIFEST_PARSED,()=>{
-      if(mode!=='live'||hls!==instance)return;
-      lastProgressAt=Date.now();
-      status('LIVE · reproduciendo · reconexión automática','ok');
-      video.play().catch(()=>status('Pulsa ▶ para iniciar'));
-    });
-        instance.on(Hls.Events.LEVEL_LOADED,()=>{
-      if(mode==='live'&&hls===instance)lastProgressAt=Date.now();
-    });
-    instance.on(Hls.Events.FRAG_LOADED,()=>{
-      if(mode==='live'&&hls===instance)lastProgressAt=Date.now();
-    });
-    instance.on(Hls.Events.ERROR,(_,data)=>{
-      if(mode!=='live'||hls!==instance||!data?.fatal)return;
-      reconnect(video,sourceUrl,status,error,
-        data.type===Hls.ErrorTypes.NETWORK_ERROR?'red':'media');
-    });
-    instance.attachMedia(video);
+  function bufferAhead(video) {
+    if (!video || !Number.isFinite(video.currentTime) || !video.buffered.length) return 0;
+    const t = video.currentTime;
+    for (let i = 0; i < video.buffered.length; i++) {
+      const s = video.buffered.start(i);
+      const e = video.buffered.end(i);
+      if (t >= s - 0.25 && t <= e + 0.25) return Math.max(0, e - t);
+    }
+    return 0;
   }
 
-  async function reconnect(video,sourceUrl,status,error,reason='sin señal'){
-    if(mode!=='live'||reconnecting)return;
-    reconnecting=true;
-    status('LIVE · reconectando · '+reason+'...','err');
+  function startBufferMonitor(video, cfg, status) {
+    if (bufferTimer) clearInterval(bufferTimer);
 
-    const old=hls;
-    hls=null;
-    if(old){
-      try{old.stopLoad();}catch{}
-      try{old.detachMedia();}catch{}
-      try{old.destroy();}catch{}
+    bufferTimer = setInterval(() => {
+      if (mode === 'idle' || !video || video.ended) return;
+      const ahead = bufferAhead(video);
+      video.dataset.bufferAhead = String(Math.floor(ahead));
+
+      // Never force a seek or download extra data manually.
+      // The media engine/HLS.js owns the actual buffer.
+      if (mode === 'vod' && ahead < cfg.lowWater && !video.paused) {
+        try { video.preload = 'auto'; } catch {}
+      }
+
+      if (mode === 'live' && ahead < cfg.lowWater && hls && !hls.destroyed) {
+        // Keep the HLS engine focused on current live fragments without seeking.
+        try { hls.startLoad(); } catch {}
+      }
+    }, 1000);
+  }
+
+  async function waitForInitialBuffer(video, target, timeout, status, label) {
+    const started = Date.now();
+
+    status(`${label} · preparando buffer (${target}s)...`, 'ok');
+
+    return await new Promise(resolve => {
+      let done = false;
+
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        clearInterval(poll);
+        video.removeEventListener('progress', check);
+        video.removeEventListener('canplay', check);
+        video.removeEventListener('timeupdate', check);
+        resolve(ok);
+      };
+
+      const check = () => {
+        if (video.ended) return finish(false);
+        const ahead = bufferAhead(video);
+        if (ahead >= target) return finish(true);
+
+        // If the browser cannot expose the requested buffer, allow playback
+        // after a safe upper timeout rather than appearing frozen forever.
+        if (Date.now() - started >= timeout) return finish(ahead >= 3);
+      };
+
+      const poll = setInterval(check, 250);
+      video.addEventListener('progress', check);
+      video.addEventListener('canplay', check);
+      video.addEventListener('timeupdate', check);
+      check();
+    });
+  }
+
+  async function reconnectLive(video, sourceUrl, status, error, reason='sin señal') {
+    if (mode !== 'live' || reconnecting) return;
+
+    reconnecting = true;
+    starting = true;
+    status(`LIVE · reconectando · ${reason}...`, 'err');
+
+    const old = hls;
+    hls = null;
+    if (old) {
+      try { old.stopLoad(); } catch {}
+      try { old.detachMedia(); } catch {}
+      try { old.destroy(); } catch {}
     }
-    try{
+
+    try {
       video.pause();
       video.removeAttribute('src');
       video.load();
-    }catch{}
+    } catch {}
 
-    await new Promise(r=>setTimeout(r,700));
-    if(mode==='live'){
-      try{await createLive(video,sourceUrl,status,error);}
-      catch{status('LIVE · no se pudo reconectar','err');}
-    }
-    setTimeout(()=>{reconnecting=false;},1800);
-  }
-
-  async function play(channel,video,status,error){
-    stop(video);
-    currentChannel=channel;
-    if(!channel?.url||!video)return;
-    const sourceUrl=String(channel.url);
-
-    if(isNativeMediaUrl(sourceUrl)){
-      mode='vod';
-      try{
-        video.src=sourceUrl;
-        video.load();
-        await video.play();
-      }catch{status('Pulsa ▶ para iniciar');}
+    await new Promise(r => setTimeout(r, 700));
+    if (mode !== 'live') {
+      reconnecting = false;
+      starting = false;
       return;
     }
 
-    mode='live';
-    if(!window.Hls||!Hls.isSupported()){
+    try {
+      await createLive(video, sourceUrl, status, error, true);
+    } catch {
+      status('LIVE · no se pudo reconectar', 'err');
+    }
+
+    reconnecting = false;
+    starting = false;
+  }
+
+  async function createLive(video, sourceUrl, status, error, isReconnect=false) {
+    if (mode !== 'live') return;
+
+    const playUrl = await getStreamUrl(sourceUrl);
+    if (mode !== 'live') return;
+
+    const cfg = CFG.LIVE;
+    const instance = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      maxBufferLength: cfg.maxBufferLength,
+      maxMaxBufferLength: cfg.maxMaxBufferLength,
+      backBufferLength: 0,
+      liveDurationInfinity: true,
+      capLevelToPlayerSize: true,
+      manifestLoadingMaxRetry: 4,
+      levelLoadingMaxRetry: 4,
+      fragLoadingMaxRetry: 4,
+      fragLoadingRetryDelay: 1000,
+      startFragPrefetch: true,
+      abrEwmaDefaultEstimate: 1000000
+    });
+
+    hls = instance;
+    lastProgressAt = Date.now();
+    lastTime = -1;
+
+    instance.on(Hls.Events.MEDIA_ATTACHED, () => {
+      if (mode === 'live' && hls === instance) instance.loadSource(playUrl);
+    });
+
+    instance.on(Hls.Events.MANIFEST_PARSED, async () => {
+      if (mode !== 'live' || hls !== instance) return;
+
+      lastProgressAt = Date.now();
+      status(isReconnect ? 'LIVE · reconexión establecida' : 'LIVE · conectando...', 'ok');
+
+      const ready = await waitForInitialBuffer(
+        video,
+        cfg.initialTarget,
+        isReconnect ? 7000 : 12000,
+        status,
+        'LIVE'
+      );
+
+      if (mode !== 'live' || hls !== instance) return;
+
+      if (ready) {
+        video.play().catch(() => status('LIVE · listo · pulsa ▶ para iniciar'));
+        status('LIVE · reproduciendo · buffer protegido', 'ok');
+      } else {
+        // Do not get stuck forever waiting for a buffer target the source
+        // cannot provide.
+        video.play().catch(() => {});
+        status('LIVE · reproduciendo · buffer limitado', 'ok');
+      }
+      starting = false;
+    });
+
+    instance.on(Hls.Events.LEVEL_LOADED, () => {
+      if (mode === 'live' && hls === instance) lastProgressAt = Date.now();
+    });
+
+    instance.on(Hls.Events.FRAG_LOADED, () => {
+      if (mode === 'live' && hls === instance) lastProgressAt = Date.now();
+    });
+
+    instance.on(Hls.Events.ERROR, (_, data) => {
+      if (mode !== 'live' || hls !== instance || !data?.fatal) return;
+      reconnectLive(
+        video,
+        sourceUrl,
+        status,
+        error,
+        data.type === Hls.ErrorTypes.NETWORK_ERROR ? 'red' : 'media'
+      );
+    });
+
+    instance.attachMedia(video);
+  }
+
+  async function play(channel, video, status, error) {
+    stop(video);
+    currentChannel = channel;
+    if (!channel?.url || !video) return;
+
+    const sourceUrl = String(channel.url);
+
+    // ---------------- VOD ----------------
+    if (isNativeMediaUrl(sourceUrl)) {
+      mode = 'vod';
+      const cfg = CFG.VOD;
+
+      try {
+        video.preload = 'auto';
+        video.src = sourceUrl;
+        video.load();
+
+        await requestWakeLock();
+        startBufferMonitor(video, cfg, status);
+
+        const ready = await waitForInitialBuffer(
+          video,
+          cfg.initialTarget,
+          10000,
+          status,
+          'VOD'
+        );
+
+        if (mode !== 'vod') return;
+
+        if (ready) {
+          video.play().catch(() => status('VOD · listo · pulsa ▶ para iniciar'));
+          status('VOD · reproduciendo · buffer protegido', 'ok');
+        } else {
+          video.play().catch(() => status('Pulsa ▶ para iniciar'));
+        }
+      } catch {
+        status('VOD · no se pudo iniciar', 'err');
+      }
+      return;
+    }
+
+    // ---------------- LIVE / HLS ----------------
+    mode = 'live';
+    starting = true;
+
+    if (!window.Hls || !Hls.isSupported()) {
+      starting = false;
       error('HLS.js no está disponible.');
       return;
     }
-    await requestWakeLock();
-    await createLive(video,sourceUrl,status,error);
 
-    clearWatchdog();
-    watchdog=setInterval(()=>{
-      if(mode!=='live'||!hls||hls.destroyed||reconnecting)return;
-      const now=Date.now();
-      const t=Number.isFinite(video.currentTime)?video.currentTime:-1;
-      if(t>=0&&t>lastTime+0.12){
-        lastTime=t;
-        lastProgressAt=now;
-        return;
+    await requestWakeLock();
+    await createLive(video, sourceUrl, status, error, false);
+
+    clearTimers();
+    // Buffer monitor is independent of reconnect watchdog.
+    startBufferMonitor(video, CFG.LIVE, status);
+
+    watchdog = setInterval(() => {
+      if (mode !== 'live' || !hls || hls.destroyed || reconnecting || starting) return;
+
+      const now = Date.now();
+      const t = Number.isFinite(video.currentTime) ? video.currentTime : -1;
+      const ahead = bufferAhead(video);
+
+      if (t >= 0 && t > lastTime + 0.12) {
+        lastTime = t;
+        lastProgressAt = now;
       }
-      if(now-lastProgressAt>=7000&&video.readyState<3){
-        reconnect(video,sourceUrl,status,error,'sin señal');
+
+      // Protect playback before the buffer is exhausted.
+      if (ahead <= CFG.LIVE.lowWater && !video.paused && !starting) {
+        try { hls.startLoad(); } catch {}
       }
-    },1000);
+
+      // If playback is no longer moving and the safety cushion is gone,
+      // perform a full reconnect. This does not use currentTime to "fix" it.
+      if (now - lastProgressAt >= 7000 &&
+          ahead <= 3 &&
+          (video.paused || video.readyState < 3)) {
+        reconnectLive(video, sourceUrl, status, error, 'sin señal');
+      }
+    }, 1000);
   }
 
-  function stop(video){
-    mode='idle';
-    reconnecting=false;
-    clearWatchdog();
+  function stop(video) {
+    mode = 'idle';
+    reconnecting = false;
+    starting = false;
+    clearTimers();
     destroyHls();
     releaseWakeLock();
-    if(video){
-      try{video.pause();}catch{}
-      try{video.removeAttribute('src');video.load();}catch{}
-      video.controls=false;
+
+    if (video) {
+      try { video.pause(); } catch {}
+      try { video.removeAttribute('src'); video.load(); } catch {}
+      try { video.preload = 'metadata'; } catch {}
+      video.controls = false;
+      delete video.dataset.bufferAhead;
     }
-    currentChannel=null;
+    currentChannel = null;
   }
-  return {play,stop,getCurrentChannel:()=>currentChannel,isHlsUrl,_getHls:()=>hls};
+
+  return {
+    play,
+    stop,
+    getCurrentChannel: () => currentChannel,
+    isHlsUrl,
+    _getHls: () => hls
+  };
 })();
 
 // ═══════════════════════════════════════════════════
