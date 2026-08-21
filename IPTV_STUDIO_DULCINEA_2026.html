@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+/* ===== ESTILOS (sin cambios respecto al original) ===== */
 :root {
   --bg-primary: #0a0a0f;
   --bg-secondary: #12121a;
@@ -1066,7 +1067,7 @@ const PlayerService = (() => {
   let hls = null;
   let currentChannel = null;
   let retryCount = 0;
-  const MAX_RETRIES = 6;
+  const MAX_RETRIES = 8;
   let abortController = null;
   let screenWakeLock = null;
   let wakeLockWanted = false;
@@ -1091,7 +1092,6 @@ const PlayerService = (() => {
     try { await screenWakeLock?.release(); } catch {}
     screenWakeLock = null;
   }
-
 
   let liveCleanup = null;
 
@@ -1134,6 +1134,32 @@ const PlayerService = (() => {
     }
   }
 
+  // Proxies de respaldo para cuando Termux falla
+  const PROXY_FALLBACKS = [
+    'https://cors-anywhere.herokuapp.com/',
+    'https://api.allorigins.win/raw?url='
+  ];
+
+  async function fetchWithFallback(url, timeout = 10000) {
+    const errors = [];
+    // Primero intentamos directo
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(timeout), mode: 'cors', cache: 'no-store' });
+      if (resp.ok) return await resp.text();
+      errors.push(`directo: HTTP ${resp.status}`);
+    } catch (e) { errors.push(`directo: ${e.message}`); }
+    // Luego probamos con proxies
+    for (const proxy of PROXY_FALLBACKS) {
+      try {
+        const proxiedUrl = proxy + encodeURIComponent(url);
+        const resp = await fetch(proxiedUrl, { signal: AbortSignal.timeout(timeout), mode: 'cors' });
+        if (resp.ok) return await resp.text();
+        errors.push(`${proxy}: HTTP ${resp.status}`);
+      } catch (e) { errors.push(`${proxy}: ${e.message}`); }
+    }
+    throw new Error('Todos los métodos fallaron: ' + errors.join('; '));
+  }
+
   async function play(channel, videoElement, statusCallback, errorCallback) {
     if (!videoElement) return;
     currentChannel = channel;
@@ -1147,66 +1173,77 @@ const PlayerService = (() => {
     statusCallback('Preparando...');
 
     const url = channel.url;
-    // Algunas fuentes HLS no terminan en .m3u8 (redirecciones, tokens,
-    // proxys o URLs dinámicas). Por eso la decisión no puede depender
-    // únicamente de la extensión.
     const isExplicitHls = isHlsUrl(url);
     const isNativeMedia = isNativeMediaUrl(url);
     let playUrl = url;
 
-    // VOD/archivos directos NO pasan por Termux /stream ni HLS.js.
-    // Esto cubre MP4 de /movie/..., además de M4V/WebM/MOV/OGV.
     if (isNativeMedia) {
       document.getElementById('playerFs')?.classList.add('native-vod');
       statusCallback('Abriendo vídeo...');
       videoElement.controls = true;
       videoElement.src = playUrl;
       videoElement.load();
+      // Precarga para VOD
+      if (channel._type === 'pelicula' || channel._type === 'series') {
+        videoElement.preload = 'metadata';
+        videoElement.addEventListener('loadedmetadata', () => {
+          videoElement.playbackRate = 0.1;
+          videoElement.play().then(() => {
+            videoElement.pause();
+            videoElement.currentTime = 0;
+            videoElement.playbackRate = 1;
+          }).catch(() => {});
+        }, { once: true });
+      }
       requestScreenWakeLock();
       videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
       return;
     }
 
-    // Termux queda disponible para los streams LIVE/HLS, que es donde
-    // ya comprobamos que el HTML funcional lo utilizaba.
+    // Intento de usar Termux
     try {
       const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 500);
       if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
     } catch {}
 
     try {
-      // Preferimos HLS.js para HLS explícito y también hacemos un intento
-      // controlado para URLs de streaming sin extensión .m3u8. Si no son HLS,
-      // el fallback nativo se activa automáticamente. Esto evita el caso en
-      // que Chrome reproduzca solo el audio porque la URL HLS fue detectada
-      // como una fuente de vídeo normal.
       const canUseHls = window.Hls && Hls.isSupported();
       const shouldTryHls = canUseHls && (isExplicitHls || /^(https?:)?\/\//i.test(playUrl));
       if (shouldTryHls) {
         statusCallback(isExplicitHls ? 'Conectando HLS...' : 'Detectando transmisión...');
+
+        // Configuración optimizada
         hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          maxBufferLength: 10,
-          maxMaxBufferLength: 20,
-          backBufferLength: 0,
-          liveDurationInfinity: true,
+          enableWorker: !(navigator.deviceMemory && navigator.deviceMemory < 2),
+          lowLatencyMode: true,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          backBufferLength: 2,
+          liveDurationInfinity: false,
           capLevelToPlayerSize: true,
-          manifestLoadingMaxRetry: 5,
-          levelLoadingMaxRetry: 5,
-          fragLoadingMaxRetry: 5,
-          fragLoadingRetryDelay: 1000,
+          manifestLoadingMaxRetry: 8,
+          levelLoadingMaxRetry: 8,
+          fragLoadingMaxRetry: 8,
+          fragLoadingRetryDelay: 1500,
+          manifestLoadingTimeOut: 15000,
+          levelLoadingTimeOut: 15000,
+          fragLoadingTimeOut: 20000,
           startFragPrefetch: true,
           abrEwmaDefaultEstimate: 1e6,
+          abrEwmaFastLive: 1.0,
+          abrEwmaSlowLive: 3.0,
+          enableWebVTT: false,
         });
 
-        // LIVE SIN DVR: una sola implementación. PiP/fullscreen quedan intactos.
+        // LIVE sin DVR con heartbeat
         let liveNoDvr = false;
         let liveNoDvrBusy = false;
         let liveSeekingHandler = null;
         let liveStallTimer = null;
         let lastLiveTime = -1;
         let lastLiveAdvanceAt = Date.now();
+        let fatalRetryCount = 0;
+        const MAX_FATAL_RETRIES = 12;
 
         const enableLiveNoDvr = () => {
           if (liveNoDvr) return;
@@ -1217,16 +1254,12 @@ const PlayerService = (() => {
             if (!liveNoDvr || liveNoDvrBusy || !hls || hls.destroyed) return;
             const livePos = hls.liveSyncPosition;
             if (!Number.isFinite(livePos)) return;
-
-            // Solo corrige una petición explícita de seek; no mueve el playhead
-            // mientras el LIVE avanza normalmente.
             liveNoDvrBusy = true;
             try { videoElement.currentTime = livePos; } catch {}
             setTimeout(() => { liveNoDvrBusy = false; }, 50);
           };
           videoElement.addEventListener('seeking', liveSeekingHandler);
 
-          // Sincronización inicial al punto LIVE.
           try {
             const livePos = hls.liveSyncPosition;
             if (Number.isFinite(livePos)) videoElement.currentTime = livePos;
@@ -1237,17 +1270,13 @@ const PlayerService = (() => {
 
           liveStallTimer = setInterval(() => {
             if (!liveNoDvr || !hls || hls.destroyed || videoElement.paused) return;
-
             const now = Date.now();
             const t = videoElement.currentTime || 0;
-
             if (t > lastLiveTime + 0.15) {
               lastLiveTime = t;
               lastLiveAdvanceAt = now;
               return;
             }
-
-            // Recuperación suave si el LIVE realmente dejó de avanzar.
             if (now - lastLiveAdvanceAt >= 12000 && !liveNoDvrBusy) {
               liveNoDvrBusy = true;
               statusCallback('Señal LIVE detenida; recuperando...', 'err');
@@ -1263,7 +1292,6 @@ const PlayerService = (() => {
         const disableLiveNoDvr = () => {
           if (liveStallTimer) clearInterval(liveStallTimer);
           liveStallTimer = null;
-
           if (liveSeekingHandler) {
             try { videoElement.removeEventListener('seeking', liveSeekingHandler); } catch {}
           }
@@ -1275,7 +1303,6 @@ const PlayerService = (() => {
           videoElement.controls = true;
         };
 
-        // Exponer solo la limpieza de esta reproducción al servicio global.
         liveCleanup = disableLiveNoDvr;
 
         hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
@@ -1286,31 +1313,30 @@ const PlayerService = (() => {
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           requestScreenWakeLock();
           statusCallback('HLS listo. Reproduciendo...', 'ok');
-          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+          // Autoplay con muted para evitar bloqueo
+          videoElement.muted = true;
+          videoElement.play().catch(() => {
+            videoElement.muted = false;
+            statusCallback('Pulsa ▶ para iniciar', 'info');
+          });
         });
 
         hls.on(Hls.Events.ERROR, (_, data) => {
           if (!data.fatal) return;
 
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            statusCallback('Error de red. Reintentando...', 'err');
-            if (retryCount < MAX_RETRIES) {
-              retryCount++;
-              setTimeout(() => {
-                if (hls && !hls.destroyed) hls.startLoad(-1);
-              }, Math.min(8000, 1000 * retryCount));
-            } else if (!isExplicitHls) {
-              // Si la URL no parecía HLS, damos una oportunidad al reproductor
-              // nativo; puede ser MP4/TS u otro formato compatible.
-              fallbackToNative();
-            } else {
-              errorCallback('No se pudo conectar después de varios intentos.');
-            }
+            fatalRetryCount++;
+            const delay = Math.min(30000, 1000 * Math.pow(1.5, fatalRetryCount));
+            statusCallback(`Reconectando en ${Math.round(delay/1000)}s...`, 'err');
+            setTimeout(() => {
+              if (hls && !hls.destroyed) {
+                hls.startLoad(-1);
+                hls.loadSource(playUrl);
+              }
+            }, delay);
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             statusCallback('Recuperando vídeo...', 'err');
-            try {
-              if (hls && !hls.destroyed) hls.recoverMediaError();
-            } catch {}
+            try { hls.recoverMediaError(); } catch {}
           } else {
             if (!isExplicitHls) {
               fallbackToNative();
@@ -1342,12 +1368,28 @@ const PlayerService = (() => {
           videoElement.load();
           videoElement.src = playUrl;
           videoElement.load();
-          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+          videoElement.muted = true;
+          videoElement.play().catch(() => {
+            videoElement.muted = false;
+            statusCallback('Pulsa ▶ para iniciar', 'info');
+          });
         }
 
-        // Detecta el caso concreto: el audio avanza pero no aparecen cuadros
-        // de vídeo. No usamos loadedmetadata para cancelar el diagnóstico porque
-        // ese evento también puede ocurrir cuando solo existe una pista de audio.
+        // Indicador de buffering
+        let bufferingTimer = null;
+        videoElement.addEventListener('progress', () => {
+          const buffered = videoElement.buffered;
+          if (buffered.length && videoElement.duration) {
+            const percent = (buffered.end(0) / videoElement.duration) * 100;
+            if (percent < 100 && !videoElement.paused) {
+              statusCallback(`Buffering ${Math.round(percent)}%`, 'info');
+            } else {
+              statusCallback('Reproduciendo...', 'ok');
+            }
+          }
+        });
+
+        // Watchdog para detectar audio sin vídeo
         let watchdogDone = false;
         let videoWatchdog = null;
         const clearVideoWatchdog = () => {
@@ -1383,7 +1425,11 @@ const PlayerService = (() => {
         statusCallback('Abriendo vídeo...');
         videoElement.src = playUrl;
         videoElement.load();
-        videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+        videoElement.muted = true;
+        videoElement.play().catch(() => {
+          videoElement.muted = false;
+          statusCallback('Pulsa ▶ para iniciar', 'info');
+        });
       }
     } catch (err) {
       errorCallback('Error al iniciar: ' + err.message);
@@ -1405,7 +1451,7 @@ const PlayerService = (() => {
   }
 
   function getCurrentChannel() { return currentChannel; }
-return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
+  return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -1907,7 +1953,6 @@ const App = (() => {
     curChannel = c;
     await StorageService.addHistory(c);
     history = await StorageService.getHistory();
-    // Progress saver cleanup from previous channel
     if (window._progressSaverClean) { window._progressSaverClean(); window._progressSaverClean = null; }
     const vid = $('#mainVid');
     const statusEl = $('#playerStatus');
@@ -1943,7 +1988,6 @@ const App = (() => {
         toast('Error de reproducción: ' + errMsg, 'error');
       }
     );
-    // Movie progress saving (not for LIVE)
     if (c._type === 'pelicula') {
       let _progTimer = null;
       const _progSave = async () => {
@@ -2235,7 +2279,6 @@ const App = (() => {
     $('#activePic').style.background = 'linear-gradient(135deg,#E50914,#8b0000)';
     $('#activePic').textContent = '📂';
 
-    // Estado base de navegación: el primer 'Atrás' desde el reproductor vuelve a la app.
     if (!window.history.state || window.history.state.dulcinea !== 'base') {
       window.history.replaceState({ dulcinea: 'base' }, '', window.location.href);
     }
@@ -2299,7 +2342,6 @@ const App = (() => {
         closeProfilesInternal();
         return;
       }
-      // Evita que vistas internas abiertas provoquen la salida de la app.
       if (drawerHistoryActive && $('#drawer').classList.contains('open')) { closeDrawerInternal(); return; }
       if ($('#searchOverlay').classList.contains('open')) { closeSearch(); return; }
       if ($('#modalBg').classList.contains('open')) { closeDetail(); return; }
@@ -2574,9 +2616,6 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
 
     $('#mainVid').addEventListener('enterpictureinpicture', () => {
       pipWasActive = true;
-      // Guardamos el estado justo al entrar. No lo modificamos ante un pause
-      // posterior, porque Android/Chrome puede pausar el vídeo temporalmente
-      // mientras la ventana flotante sigue activa.
       pipWasPlaying = !$('#mainVid').paused;
     });
     $('#mainVid').addEventListener('leavepictureinpicture', () => {
@@ -2620,7 +2659,6 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
         if (sec === 'more') { openMorePanel(); return; }
       });
     });
-    // More panel items
     document.querySelectorAll('.more-item').forEach(btn => {
       btn.addEventListener('click', () => {
         closeMorePanel();
