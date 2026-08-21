@@ -26,7 +26,7 @@ def valid_url(url):
 
 def remote_headers(range_header=None):
     h={
-        'User-Agent':'Mozilla/5.0 IPTV-Studio-Termux/4.0',
+        'User-Agent':'Mozilla/5.0 IPTV-Studio-Termux/4.1',
         'Accept':'*/*',
         'Accept-Encoding':'identity',
         'Connection':'keep-alive'
@@ -80,43 +80,15 @@ class Handler(BaseHTTPRequestHandler):
                                 'application/json; charset=utf-8')
             return
 
-        if p.path=='/playlist':
+        if p.path in ('/playlist','/stream'):
             url=qs.get('url',[''])[0]
-            self.proxy_playlist(url)
-            return
-
-        if p.path=='/stream':
-            url=qs.get('url',[''])[0]
-            self.proxy_stream(url)
+            self.proxy(url)
             return
 
         self.send_small(404,json_bytes({'ok':False,'error':'Ruta no encontrada'}),
                         'application/json; charset=utf-8')
 
-    def proxy_playlist(self,url):
-        if not valid_url(url):
-            self.send_small(400,json_bytes({'ok':False,'error':'URL invalida'}),
-                            'application/json; charset=utf-8')
-            return
-        try:
-            req=Request(url,headers=remote_headers())
-            with urlopen(req,timeout=TIMEOUT) as r:
-                data=r.read(8*1024*1024+1)
-                status=getattr(r,'status',200)
-                ctype=r.headers.get('Content-Type') or 'application/vnd.apple.mpegurl'
-            if len(data)>8*1024*1024:
-                self.send_small(413,json_bytes({'ok':False,'error':'Playlist demasiado grande'}),
-                                'application/json; charset=utf-8')
-                return
-            self.send_small(status,data,ctype)
-        except HTTPError as e:
-            self.send_small(e.code,json_bytes({'ok':False,'error':f'HTTP {e.code}'}),
-                            'application/json; charset=utf-8')
-        except Exception as e:
-            self.send_small(502,json_bytes({'ok':False,'error':'No se pudo conectar con la playlist'}),
-                            'application/json; charset=utf-8')
-
-    def proxy_stream(self,url):
+    def proxy(self,url):
         if not valid_url(url):
             self.send_small(400,json_bytes({'ok':False,'error':'URL invalida'}),
                             'application/json; charset=utf-8')
@@ -153,18 +125,22 @@ class Handler(BaseHTTPRequestHandler):
             r.close()
 
         except HTTPError as e:
-            self.send_small(e.code,json_bytes({'ok':False,'error':f'Stream HTTP {e.code}'}),
+            self.send_small(e.code,json_bytes({'ok':False,'error':f'HTTP {e.code}'}),
                             'application/json; charset=utf-8')
         except (URLError,TimeoutError):
-            self.send_small(502,json_bytes({'ok':False,'error':'No se pudo conectar con el stream'}),
+            self.send_small(502,json_bytes({'ok':False,'error':'No se pudo conectar con el servidor principal'}),
                             'application/json; charset=utf-8')
         except (BrokenPipeError,ConnectionResetError):
             pass
-        except Exception:
-            self.send_small(500,json_bytes({'ok':False,'error':'Error en el stream'}),
-                            'application/json; charset=utf-8')
+        except Exception as e:
+            print('STREAM ERROR:',repr(e))
+            try:
+                self.send_small(502,json_bytes({'ok':False,'error':'Error en la conexión'}),
+                                'application/json; charset=utf-8')
+            except Exception:
+                pass
 
 if __name__=='__main__':
     print(f'IPTV Studio Termux: http://{HOST}:{PORT}/')
-    print('LIVE buffer/DVR/caché: DESACTIVADOS')
+    print('LIVE: proxy directo, sin DVR, sin caché, sin prefetch')
     ThreadingHTTPServer((HOST,PORT),Handler).serve_forever()
