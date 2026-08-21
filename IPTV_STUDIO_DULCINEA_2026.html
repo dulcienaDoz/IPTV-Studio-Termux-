@@ -820,6 +820,28 @@ const PlayerService = (() => {
   let retryCount = 0;
   const MAX_RETRIES = 6;
   let abortController = null;
+  let liveMode = false;
+  let liveSeekingHandler = null;
+  let liveStallTimer = null;
+  let lastLiveTime = -1;
+  let lastLiveAdvanceAt = 0;
+  let liveRecoveryBusy = false;
+
+  function clearLiveGuards(videoElement) {
+    if (liveStallTimer) {
+      clearInterval(liveStallTimer);
+      liveStallTimer = null;
+    }
+    if (videoElement && liveSeekingHandler) {
+      videoElement.removeEventListener('seeking', liveSeekingHandler);
+    }
+    liveSeekingHandler = null;
+    liveMode = false;
+    liveRecoveryBusy = false;
+    lastLiveTime = -1;
+    lastLiveAdvanceAt = 0;
+    if (videoElement) videoElement.controls = true;
+  }
 
   function destroyHls() {
     if (hls) { hls.destroy(); hls = null; }
@@ -827,8 +849,15 @@ const PlayerService = (() => {
 
   function isHlsUrl(url) {
     return /\.m3u8(?:$|[?#])/i.test(url) ||
+           /\.m3u(?:$|[?#])/i.test(url) ||
            /[?&](?:type|format|output)=m3u8\b/i.test(url) ||
-           /\/(?:hls|hls_live)\//i.test(url);
+           /\/(?:hls|hls_live|live)\//i.test(url);
+  }
+
+  function isNativeMediaUrl(url) {
+    return /\.(?:mp4|m4v|webm|mov|ogv|ogg)(?:$|[?#])/i.test(url) ||
+           /[?&](?:type|format|output)=mp4\b/i.test(url) ||
+           /\/movie(?:\/|$)/i.test(url);
   }
 
   async function fetchWithTimeout(url, timeout = 60000) {
@@ -849,6 +878,7 @@ const PlayerService = (() => {
     if (!videoElement) return;
     currentChannel = channel;
     retryCount = 0;
+    clearLiveGuards(videoElement);
     destroyHls();
     videoElement.pause();
     videoElement.removeAttribute('src');
@@ -860,8 +890,22 @@ const PlayerService = (() => {
     // proxys o URLs dinámicas). Por eso la decisión no puede depender
     // únicamente de la extensión.
     const isExplicitHls = isHlsUrl(url);
+    const isNativeMedia = isNativeMediaUrl(url);
     let playUrl = url;
 
+    // VOD/archivos directos NO pasan por Termux /stream ni HLS.js.
+    // Esto cubre MP4 de /movie/..., además de M4V/WebM/MOV/OGV.
+    if (isNativeMedia) {
+      statusCallback('Abriendo vídeo...');
+      videoElement.controls = true;
+      videoElement.src = playUrl;
+      videoElement.load();
+      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+      return;
+    }
+
+    // Termux queda disponible para los streams LIVE/HLS, que es donde
+    // ya comprobamos que el HTML funcional lo utilizaba.
     try {
       const health = await fetchWithTimeout('http://127.0.0.1:8765/health', 500);
       if (health) playUrl = 'http://127.0.0.1:8765/stream?url=' + encodeURIComponent(url);
@@ -880,9 +924,10 @@ const PlayerService = (() => {
         hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
-          maxBufferLength: 12,
-          maxMaxBufferLength: 24,
-          backBufferLength: 8,
+          maxBufferLength: 10,
+          maxMaxBufferLength: 20,
+          backBufferLength: 0,
+          liveDurationInfinity: true,
           capLevelToPlayerSize: true,
           manifestLoadingMaxRetry: 5,
           levelLoadingMaxRetry: 5,
@@ -890,6 +935,64 @@ const PlayerService = (() => {
           fragLoadingRetryDelay: 1000,
           startFragPrefetch: true,
           abrEwmaDefaultEstimate: 1e6,
+        });
+
+        // LIVE real: no DVR, no desplazamiento temporal y sin conservar
+        // una ventana de reproducción hacia atrás.
+        const enableLiveMode = () => {
+          if (liveMode) return;
+          liveMode = true;
+          videoElement.controls = false;
+
+          liveSeekingHandler = () => {
+            if (!liveMode || liveRecoveryBusy || !hls || hls.destroyed) return;
+            const livePos = hls.liveSyncPosition;
+            if (!Number.isFinite(livePos)) return;
+            liveRecoveryBusy = true;
+            try { videoElement.currentTime = livePos; } catch {}
+            setTimeout(() => { liveRecoveryBusy = false; }, 50);
+          };
+          videoElement.addEventListener('seeking', liveSeekingHandler);
+
+          lastLiveTime = videoElement.currentTime || 0;
+          lastLiveAdvanceAt = Date.now();
+
+          liveStallTimer = setInterval(() => {
+            if (!liveMode || !hls || hls.destroyed || videoElement.paused) return;
+            const now = Date.now();
+            const t = videoElement.currentTime || 0;
+
+            if (t > lastLiveTime + 0.15) {
+              lastLiveTime = t;
+              lastLiveAdvanceAt = now;
+              return;
+            }
+
+            // Solo recuperar después de 12 s sin avance. No reiniciamos
+            // continuamente el buffer y no tocamos películas/VOD.
+            if (now - lastLiveAdvanceAt >= 12000 && !liveRecoveryBusy) {
+              liveRecoveryBusy = true;
+              statusCallback('Señal LIVE detenida; recuperando...', 'err');
+              try {
+                hls.startLoad(-1);
+                if (typeof hls.recoverMediaError === 'function') {
+                  setTimeout(() => {
+                    try {
+                      if (hls && !hls.destroyed) hls.recoverMediaError();
+                    } catch {}
+                  }, 1200);
+                }
+              } catch {}
+              lastLiveAdvanceAt = now;
+              setTimeout(() => { liveRecoveryBusy = false; }, 1800);
+            }
+          }, 2000);
+
+          statusCallback('HLS en vivo · sin DVR', 'ok');
+        };
+
+        hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+          if (data?.details?.live) enableLiveMode();
         });
 
         hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
@@ -937,6 +1040,8 @@ const PlayerService = (() => {
           if (hls && !hls.destroyed) hls.destroy();
           hls = null;
           retryCount = 0;
+          clearLiveGuards(videoElement);
+          videoElement.controls = true;
           statusCallback('Probando reproductor nativo...');
           videoElement.pause();
           videoElement.removeAttribute('src');
@@ -992,6 +1097,7 @@ const PlayerService = (() => {
   }
 
   function stop(videoElement) {
+    clearLiveGuards(videoElement);
     destroyHls();
     if (videoElement) {
       videoElement.pause();
@@ -1003,6 +1109,18 @@ const PlayerService = (() => {
   }
 
   function getCurrentChannel() { return currentChannel; }
+
+  // Con los controles nativos ocultos en LIVE, un toque sobre el vídeo
+  // conserva la función básica de reproducir/pausar sin mostrar la barra DVR.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click', (ev) => {
+      const v = document.getElementById('mainVid');
+      if (!v || !liveMode) return;
+      if (ev.target !== v) return;
+      if (v.paused) v.play().catch(() => {});
+      else v.pause();
+    }, { passive: true });
+  }
 
   return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
 })();
