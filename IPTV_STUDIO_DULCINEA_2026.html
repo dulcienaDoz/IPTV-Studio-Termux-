@@ -644,6 +644,68 @@ ul { list-style: none; }
 @media(max-width:600px){
   .vod-zone{width:42%}
 }
+
+/* ===== CONTROLES INFERIORES CORREGIDOS ===== */
+.player-controls.persistent-controls{
+  position:absolute;
+  left:0; right:0; bottom:0;
+  z-index:30;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:58px;
+  padding:26px 12px 10px;
+  box-sizing:border-box;
+  background:linear-gradient(to top,rgba(0,0,0,.92),rgba(0,0,0,0));
+  opacity:1 !important;
+  visibility:visible !important;
+  pointer-events:auto !important;
+  touch-action:manipulation;
+}
+.player-controls.persistent-controls.player-idle{
+  opacity:1 !important;
+  visibility:visible !important;
+  pointer-events:auto !important;
+}
+.player-controls.persistent-controls .pc-btn{
+  width:38px;height:38px;flex:0 0 38px;
+  border:0;border-radius:50%;
+  background:rgba(0,0,0,.72);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;line-height:1;
+  padding:0;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+.player-controls.persistent-controls .pc-time{
+  flex:0 0 auto;
+  min-width:38px;
+  color:#fff;
+  font:11px/1 monospace;
+  text-align:center;
+  user-select:none;
+}
+.player-controls.persistent-controls .pc-seek{
+  flex:1 1 auto;
+  min-width:45px;
+  accent-color:#fff;
+  touch-action:pan-x;
+}
+.player-controls.persistent-controls .pc-volume{
+  flex:0 0 70px;
+  width:70px;
+  accent-color:#fff;
+  touch-action:pan-x;
+}
+.player-controls.persistent-controls input{
+  margin:0;
+}
+@media(max-width:600px){
+  .player-controls.persistent-controls{gap:5px;padding:24px 7px 8px}
+  .player-controls.persistent-controls .pc-btn{width:36px;height:36px;flex-basis:36px}
+  .player-controls.persistent-controls .pc-time{min-width:32px;font-size:10px}
+  .player-controls.persistent-controls .pc-volume{flex-basis:54px;width:54px}
+}
 </style>
 </head>
 <body>
@@ -778,8 +840,15 @@ ul { list-style: none; }
       <button class="player-option danger" id="optClose" type="button">✕&nbsp; Cerrar reproductor</button>
     </div>
   </div>
-  <video id="mainVid" controls playsinline preload="metadata"></video>
-  <div class="player-controls" id="playerControls"></div>
+  <video id="mainVid" playsinline preload="metadata"></video>
+  <div class="player-controls persistent-controls" id="playerControls" aria-label="Controles de reproducción">
+  <button class="pc-btn" id="pcPlay" type="button" aria-label="Reproducir o pausar">▶</button>
+  <span class="pc-time" id="pcCurrent">00:00</span>
+  <input class="pc-seek" id="pcSeek" type="range" min="0" max="100" value="0" step="0.1" aria-label="Posición">
+  <span class="pc-time" id="pcDuration">00:00</span>
+  <button class="pc-btn" id="pcMute" type="button" aria-label="Silenciar">🔊</button>
+  <input class="pc-volume" id="pcVolume" type="range" min="0" max="1" value="1" step="0.01" aria-label="Volumen">
+</div>
   <div class="vod-gesture-layer" id="vodGestureLayer" aria-hidden="true">
     <button class="vod-zone vod-zone-left" id="vodZoneLeft" type="button" aria-label="Retroceder 10 segundos"></button>
     <button class="vod-zone vod-zone-right" id="vodZoneRight" type="button" aria-label="Avanzar 10 segundos"></button>
@@ -1947,6 +2016,87 @@ const App = (() => {
   })();
 
   // ── Reproducción ──
+
+  // ── Controles inferiores persistentes ──
+  const PlayerControls = (() => {
+    let cleanup = null;
+
+    function fmt(sec){
+      sec=Math.max(0,Math.floor(Number(sec)||0));
+      const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+      return h ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+               : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function setup(video, channel){
+      if(cleanup){try{cleanup()}catch{}}
+      cleanup=null;
+      const bar=$('#playerControls'), play=$('#pcPlay'), mute=$('#pcMute');
+      const seek=$('#pcSeek'), vol=$('#pcVolume'), cur=$('#pcCurrent'), dur=$('#pcDuration');
+      if(!bar||!play||!mute||!seek||!vol||!cur||!dur)return;
+
+      const live=!VodController.isVod(channel);
+      seek.disabled=live;
+      seek.style.opacity=live?'.35':'1';
+      dur.textContent=live?'LIVE':'00:00';
+      bar.classList.add('persistent-controls');
+      bar.classList.remove('player-idle');
+
+      const syncPlay=()=>play.textContent=video.paused?'▶':'❚❚';
+      const syncVol=()=>{
+        mute.textContent=(video.muted||video.volume===0)?'🔇':(video.volume<.5?'🔉':'🔊');
+        vol.value=video.muted?'0':String(video.volume);
+      };
+      const syncTime=()=>{
+        const t=Number.isFinite(video.currentTime)?video.currentTime:0;
+        cur.textContent=fmt(t);
+        if(!live&&Number.isFinite(video.duration)&&video.duration>0){
+          dur.textContent=fmt(video.duration);
+          seek.max=String(video.duration);
+          seek.value=String(Math.min(t,video.duration));
+        }
+      };
+
+      const onPlay=e=>{e.preventDefault();e.stopPropagation();video.paused?video.play().catch(()=>{}):video.pause()};
+      const onMute=e=>{e.preventDefault();e.stopPropagation();video.muted=!video.muted;syncVol()};
+      const onVol=e=>{e.stopPropagation();const v=Math.max(0,Math.min(1,Number(e.target.value)));video.volume=v;video.muted=v===0;syncVol()};
+      const onSeek=e=>{
+        e.stopPropagation();
+        if(live||!Number.isFinite(video.duration)||video.duration<=0)return;
+        try{video.currentTime=Math.max(0,Math.min(video.duration,Number(e.target.value)))}catch{}
+      };
+
+      play.addEventListener('click',onPlay);
+      mute.addEventListener('click',onMute);
+      vol.addEventListener('input',onVol);
+      seek.addEventListener('input',onSeek);
+      for(const el of [play,mute,vol,seek]) el.addEventListener('pointerdown',e=>e.stopPropagation());
+
+      video.addEventListener('play',syncPlay);
+      video.addEventListener('pause',syncPlay);
+      video.addEventListener('timeupdate',syncTime);
+      video.addEventListener('loadedmetadata',syncTime);
+      video.addEventListener('durationchange',syncTime);
+      video.addEventListener('volumechange',syncVol);
+
+      syncPlay();syncVol();syncTime();
+
+      cleanup=()=>{
+        play.removeEventListener('click',onPlay);
+        mute.removeEventListener('click',onMute);
+        vol.removeEventListener('input',onVol);
+        seek.removeEventListener('input',onSeek);
+        video.removeEventListener('play',syncPlay);
+        video.removeEventListener('pause',syncPlay);
+        video.removeEventListener('timeupdate',syncTime);
+        video.removeEventListener('loadedmetadata',syncTime);
+        video.removeEventListener('durationchange',syncTime);
+        video.removeEventListener('volumechange',syncVol);
+      };
+    }
+    return {setup,cleanup:()=>{if(cleanup){try{cleanup()}catch{}cleanup=null}}};
+  })();
+
   async function playChannel(c) {
     curChannel = c;
     await StorageService.addHistory(c);
@@ -1989,6 +2139,8 @@ const App = (() => {
         toast('Error de reproducción: ' + errMsg, 'error');
       }
     );
+    PlayerControls.setup(vid, c);
+
     VodController.activate(vid, c);
 
     // Movie progress saving (not for LIVE)
@@ -2130,6 +2282,8 @@ const App = (() => {
   }
 
   function stopPlayer() {
+    if (typeof PlayerControls !== 'undefined') PlayerControls.cleanup();
+
     if (playerHistoryActive) {
       window.history.back();
       return;
