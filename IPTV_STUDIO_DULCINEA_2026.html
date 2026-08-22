@@ -1430,6 +1430,42 @@ body {
   bottom: auto !important;
 }
 
+
+/* AJUSTE MÓVIL DE DISTRIBUCIÓN — evita que las filas invadan el hero */
+@media (max-width: 960px) {
+  .content {
+    margin-top: -10px !important;
+  }
+
+  .cat-row {
+    position: relative;
+    z-index: 2;
+  }
+
+  .hero-btns {
+    position: relative;
+    z-index: 4;
+  }
+}
+
+@media (max-width: 560px) {
+  .content {
+    margin-top: 0 !important;
+    padding-top: 8px;
+  }
+}
+
+
+.card-type-badge {
+  max-width: calc(100% - 14px) !important;
+  padding: 4px 8px !important;
+  font-size: 9px !important;
+  line-height: 1 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 </style>
 </head>
 <body>
@@ -2559,9 +2595,9 @@ const App = (() => {
     thumb.appendChild(live);
 
     const typeMap = {
-      'envivo': { label: '<span class="ldot" style="width:7px;height:7px;display:inline-block"></span> LIVE', cls: 'live' },
-      'pelicula': { label: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></rect></svg> MOVIE', cls: 'movie' },
-      'series': { label: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg> SERIE', cls: 'series' }
+      'envivo': { label: 'LIVE', cls: 'live' },
+      'pelicula': { label: 'MOVIE', cls: 'movie' },
+      'series': { label: 'SERIE', cls: 'series' }
     };
     const info = typeMap[c._type];
     if (info) {
