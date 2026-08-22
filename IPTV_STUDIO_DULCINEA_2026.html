@@ -1378,6 +1378,58 @@ body {
   color: var(--accent);
 }
 
+
+/* Ajuste fino de distribución de tarjetas: no cambia el diseño, solo evita solapamientos. */
+.card-type-badge {
+  font-size: 9px !important;
+  line-height: 1 !important;
+  padding: 4px 7px !important;
+  min-height: 18px;
+  max-width: calc(100% - 12px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: .4px !important;
+  z-index: 3;
+}
+
+.card-thumb {
+  position: relative;
+  overflow: hidden;
+}
+
+.card-type-badge + * {
+  min-width: 0;
+}
+
+/* El contenido de la tarjeta queda por debajo de la etiqueta, sin que esta invada el icono. */
+.card-ov {
+  z-index: 2;
+}
+
+.card-ov-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Logos/imágenes conservan su tamaño y no quedan tapados por el badge. */
+.card-thumb img {
+  position: relative;
+  z-index: 1;
+}
+
+/* Ajuste de posición del badge */
+
+.card-type-badge {
+  position: absolute !important;
+  left: 7px !important;
+  top: 7px !important;
+  right: auto !important;
+  bottom: auto !important;
+}
+
 </style>
 </head>
 <body>
