@@ -1473,6 +1473,20 @@ body {
 .hero { position: relative !important; z-index: 1 !important; }
 .hero-btns { position: relative !important; z-index: 5 !important; }
 .row-hdr { position: relative !important; z-index: 2 !important; }
+
+/* Compatibilidad multimedia Android/WebView — sin cambiar el diseño */
+video#mainVid {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  object-fit: contain;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
 </style>
 </head>
 <body>
@@ -1666,7 +1680,7 @@ body {
   <div class="field">
     <label for="urlMode">Método de carga</label>
     <select id="urlMode">
-      <option value="auto">Automático (Termux → directo)</option>
+      <option value="auto">Automático (directo → proxy)</option>
       <option value="direct">Solo directo</option>
       <option value="proxy">Proxy personalizado</option>
     </select>
@@ -1702,7 +1716,7 @@ body {
 <div class="app-view" id="viewMyList" role="main" aria-label="Mi lista"></div>
 <div class="app-view" id="viewHistory" role="main" aria-label="Historial"></div>
 <div class="app-view" id="viewSettings" role="main" aria-label="Configuración"></div>
-<div class="app-view" id="viewTermux" role="main" aria-label="Estado de Termux"></div>
+<div class="app-view" id="viewTermux" role="main" aria-label="Estado del reproductor"></div>
 
 <!-- ===== MORE PANEL ===== -->
 <div class="more-backdrop" id="morePanelBackdrop"></div>
@@ -1713,7 +1727,7 @@ body {
     <button class="more-item" data-more="history"><span class="more-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>Historial</button>
     <button class="more-item" data-more="settings"><span class="more-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Configuración</button>
     <button class="more-item" data-more="update"><span class="more-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></span>Actualizar lista</button>
-    <button class="more-item" data-more="termux"><span class="more-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg></span>Estado de Termux</button>
+    <button class="more-item" data-more="termux"><span class="more-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg></span>Estado del reproductor</button>
     <button class="more-item" data-more="info"><span class="more-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>Información</button>
   </div>
 </div>
@@ -1935,7 +1949,9 @@ const PlayerService = (() => {
   let wakeLockWanted = false;
   let keepAliveTimer = null;
   let currentVideoElement = null;
-async function requestScreenWakeLock() {
+  let sessionId = 0;
+
+  async function requestScreenWakeLock() {
     wakeLockWanted = true;
     if (!('wakeLock' in navigator)) return;
     try {
@@ -1967,7 +1983,10 @@ async function requestScreenWakeLock() {
   }
 
   function destroyHls() {
-    if (hls) { hls.destroy(); hls = null; }
+    if (hls) {
+      try { hls.destroy(); } catch {}
+      hls = null;
+    }
   }
 
   function isHlsUrl(url) {
@@ -1983,11 +2002,27 @@ async function requestScreenWakeLock() {
            /\/movie(?:\/|$)/i.test(url);
   }
 
+  function canNativePlay(url) {
+    const v = document.createElement('video');
+    if (/\.(?:mp4|m4v)(?:$|[?#])/i.test(url) || /[?&](?:type|format|output)=mp4\b/i.test(url)) {
+      return !!v.canPlayType('video/mp4');
+    }
+    if (/\.m3u8(?:$|[?#])/i.test(url)) {
+      return !!v.canPlayType('application/vnd.apple.mpegurl');
+    }
+    return false;
+  }
+
   async function fetchWithTimeout(url, timeout = 60000) {
     abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), timeout);
+    const controller = abortController;
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
-      const resp = await fetch(url, { signal: abortController.signal, mode: 'cors', cache: 'no-store' });
+      const resp = await fetch(url, {
+        signal: controller.signal,
+        mode: 'cors',
+        cache: 'no-store'
+      });
       clearTimeout(timeoutId);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       return await resp.text();
@@ -1997,7 +2032,8 @@ async function requestScreenWakeLock() {
     }
   }
 
-  // Proxies de respaldo para cuando Termux falla
+  // Solo se utilizan para cargar listas M3U remotas con CORS bloqueado.
+  // No se usan para la reproducción de vídeo.
   const PROXY_FALLBACKS = [
     'https://cors-anywhere.herokuapp.com/',
     'https://api.allorigins.win/raw?url='
@@ -2005,17 +2041,23 @@ async function requestScreenWakeLock() {
 
   async function fetchWithFallback(url, timeout = 10000) {
     const errors = [];
-    // Primero intentamos directo
     try {
-      const resp = await fetch(url, { signal: AbortSignal.timeout(timeout), mode: 'cors', cache: 'no-store' });
+      const resp = await fetch(url, {
+        signal: AbortSignal.timeout(timeout),
+        mode: 'cors',
+        cache: 'no-store'
+      });
       if (resp.ok) return await resp.text();
       errors.push(`directo: HTTP ${resp.status}`);
     } catch (e) { errors.push(`directo: ${e.message}`); }
-    // Luego probamos con proxies
+
     for (const proxy of PROXY_FALLBACKS) {
       try {
         const proxiedUrl = proxy + encodeURIComponent(url);
-        const resp = await fetch(proxiedUrl, { signal: AbortSignal.timeout(timeout), mode: 'cors' });
+        const resp = await fetch(proxiedUrl, {
+          signal: AbortSignal.timeout(timeout),
+          mode: 'cors'
+        });
         if (resp.ok) return await resp.text();
         errors.push(`${proxy}: HTTP ${resp.status}`);
       } catch (e) { errors.push(`${proxy}: ${e.message}`); }
@@ -2023,90 +2065,130 @@ async function requestScreenWakeLock() {
     throw new Error('Todos los métodos fallaron: ' + errors.join('; '));
   }
 
+  function prepareVideo(videoElement) {
+    videoElement.autoplay = true;
+    videoElement.playsInline = true;
+    videoElement.setAttribute('playsinline', '');
+    videoElement.setAttribute('webkit-playsinline', '');
+    videoElement.preload = 'metadata';
+    videoElement.controls = true;
+    videoElement.muted = false;
+  }
+
+  function playNative(videoElement, url, statusCallback, session) {
+    if (!videoElement || session !== sessionId) return;
+
+    statusCallback('Abriendo vídeo...', 'info');
+    prepareVideo(videoElement);
+    videoElement.src = url;
+    videoElement.load();
+
+    const start = () => {
+      if (session !== sessionId) return;
+      requestScreenWakeLock();
+      videoElement.play().then(() => {
+        if (session === sessionId) statusCallback('Reproduciendo...', 'ok');
+      }).catch(() => {
+        statusCallback('Pulsa ▶ para iniciar', 'info');
+      });
+    };
+
+    if (videoElement.readyState >= 2) {
+      start();
+    } else {
+      videoElement.addEventListener('canplay', start, { once: true });
+      setTimeout(start, 1200);
+    }
+  }
+
   async function play(channel, videoElement, statusCallback, errorCallback) {
     if (!videoElement) return;
+
+    sessionId++;
+    const session = sessionId;
+
     currentChannel = channel;
     currentVideoElement = videoElement;
-    window._lastStatusCallback = statusCallback;
-    window._lastErrorCallback = errorCallback;
-retryCount = 0;
+    retryCount = 0;
+
     document.getElementById('playerFs')?.classList.remove('native-vod');
     clearLiveGuards(videoElement);
     destroyHls();
-    videoElement.pause();
+
+    try { videoElement.pause(); } catch {}
     videoElement.removeAttribute('src');
     videoElement.load();
+    prepareVideo(videoElement);
+
     statusCallback('Preparando...');
 
-    const url = channel.url;
+    const url = String(channel.url || '').trim();
     const isExplicitHls = isHlsUrl(url);
     const isNativeMedia = isNativeMediaUrl(url);
-    let playUrl = url;
 
-    if (isNativeMedia) {
-      document.getElementById('playerFs')?.classList.add('native-vod');
-      statusCallback('Abriendo vídeo...');
-      videoElement.controls = true;
-      videoElement.src = playUrl;
-      videoElement.load();
-      // Precarga para VOD
-      if (channel._type === 'pelicula' || channel._type === 'series') {
-        videoElement.preload = 'metadata';
-        videoElement.addEventListener('loadedmetadata', () => {
-          videoElement.playbackRate = 0.1;
-          videoElement.play().then(() => {
-            videoElement.pause();
-            videoElement.currentTime = 0;
-            videoElement.playbackRate = 1;
-          }).catch(() => {});
-        }, { once: true });
-      }
-      requestScreenWakeLock();
-      videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar'));
+    if (!url) {
+      errorCallback('La fuente está vacía.');
       return;
     }
 
+    // MP4/WebM/VOD: reproducción nativa, sin precarga artificial ni cambios
+    // de playbackRate que puedan provocar pausas o incompatibilidades.
+    if (isNativeMedia) {
+      document.getElementById('playerFs')?.classList.add('native-vod');
+      playNative(videoElement, url, statusCallback, session);
+      return;
+    }
 
     try {
-      const canUseHls = window.Hls && Hls.isSupported();
-      const shouldTryHls = canUseHls && (isExplicitHls || /^(https?:)?\/\//i.test(playUrl));
-      if (shouldTryHls) {
-        statusCallback(isExplicitHls ? 'Conectando HLS...' : 'Detectando transmisión...');
+      const canUseHls = !!(window.Hls && Hls.isSupported());
 
-        // Configuración optimizada
+      // Preferencia para HLS.js; en Safari/WebView con HLS nativo se usa el
+      // reproductor nativo cuando HLS.js no está disponible.
+      if (canUseHls && (isExplicitHls || /^(https?:)?\/\//i.test(url))) {
+        statusCallback(isExplicitHls ? 'Conectando HLS...' : 'Detectando transmisión...', 'info');
+
         hls = new Hls({
           enableWorker: !(navigator.deviceMemory && navigator.deviceMemory < 2),
           lowLatencyMode: true,
-          maxBufferLength: 45,
-          maxMaxBufferLength: 90,
-          backBufferLength: 4,
+
+          // Buffer corto y estable para LIVE; evita acumular una gran cola.
+          maxBufferLength: 16,
+          maxMaxBufferLength: 32,
+          backBufferLength: 2,
+
           liveDurationInfinity: true,
-          liveSyncDurationCount: 3,
-          liveMaxLatencyDurationCount: 10,
+          liveSyncDurationCount: 2,
+          liveMaxLatencyDurationCount: 6,
           capLevelToPlayerSize: true,
-          manifestLoadingMaxRetry: 12,
+
+          manifestLoadingMaxRetry: 8,
           manifestLoadingRetryDelay: 500,
-          manifestLoadingMaxRetryTimeout: 8000,
-          levelLoadingMaxRetry: 12,
+          manifestLoadingMaxRetryTimeout: 7000,
+
+          levelLoadingMaxRetry: 8,
           levelLoadingRetryDelay: 500,
-          levelLoadingMaxRetryTimeout: 8000,
-          fragLoadingMaxRetry: 12,
-          fragLoadingRetryDelay: 500,
-          fragLoadingMaxRetryTimeout: 8000,
-          manifestLoadingTimeOut: 20000,
-          levelLoadingTimeOut: 20000,
-          fragLoadingTimeOut: 30000,
+          levelLoadingMaxRetryTimeout: 7000,
+
+          fragLoadingMaxRetry: 10,
+          fragLoadingRetryDelay: 400,
+          fragLoadingMaxRetryTimeout: 10000,
+
+          manifestLoadingTimeOut: 15000,
+          levelLoadingTimeOut: 15000,
+          fragLoadingTimeOut: 20000,
+
           startFragPrefetch: true,
           progressive: true,
           testBandwidth: true,
-          abrEwmaDefaultEstimate: 2e6,
+
+          abrEwmaDefaultEstimate: 2000000,
           abrEwmaFastLive: 3.0,
           abrEwmaSlowLive: 9.0,
+
           enableWebVTT: false,
-          xhrSetup: (xhr) => { xhr.withCredentials = false; },
+          xhrSetup: (xhr) => { xhr.withCredentials = false; }
         });
 
-        // LIVE sin DVR con heartbeat
         let liveNoDvr = false;
         let liveNoDvrBusy = false;
         let liveSeekingHandler = null;
@@ -2114,21 +2196,22 @@ retryCount = 0;
         let lastLiveTime = -1;
         let lastLiveAdvanceAt = Date.now();
         let fatalRetryCount = 0;
-        const MAX_FATAL_RETRIES = 12;
+        const MAX_FATAL_RETRIES = 10;
 
         const enableLiveNoDvr = () => {
-          if (liveNoDvr) return;
+          if (liveNoDvr || session !== sessionId) return;
           liveNoDvr = true;
           videoElement.controls = false;
 
           liveSeekingHandler = () => {
-            if (!liveNoDvr || liveNoDvrBusy || !hls || hls.destroyed) return;
+            if (!liveNoDvr || liveNoDvrBusy || !hls || hls.destroyed || session !== sessionId) return;
             const livePos = hls.liveSyncPosition;
             if (!Number.isFinite(livePos)) return;
             liveNoDvrBusy = true;
             try { videoElement.currentTime = livePos; } catch {}
-            setTimeout(() => { liveNoDvrBusy = false; }, 50);
+            setTimeout(() => { liveNoDvrBusy = false; }, 80);
           };
+
           videoElement.addEventListener('seeking', liveSeekingHandler);
 
           try {
@@ -2141,45 +2224,53 @@ retryCount = 0;
 
           let consecStalls = 0;
           liveStallTimer = setInterval(() => {
-            if (!liveNoDvr || !hls || hls.destroyed || videoElement.paused) return;
+            if (!liveNoDvr || liveNoDvrBusy || !hls || hls.destroyed ||
+                videoElement.paused || session !== sessionId) return;
+
             const now = Date.now();
             const t = videoElement.currentTime || 0;
-            if (t > lastLiveTime + 0.15) {
+
+            if (t > lastLiveTime + 0.12) {
               lastLiveTime = t;
               lastLiveAdvanceAt = now;
               consecStalls = 0;
               return;
             }
-            if (now - lastLiveAdvanceAt >= 8000 && !liveNoDvrBusy) {
+
+            // Recuperación más rápida, pero sin recargar continuamente.
+            if (now - lastLiveAdvanceAt >= 6000) {
               liveNoDvrBusy = true;
               consecStalls++;
               statusCallback('Recuperando señal en vivo...', 'err');
+
               try {
-                if (consecStalls > 3 && fatalRetryCount < MAX_FATAL_RETRIES) {
-                  // Hard reload
+                if (consecStalls >= 3 && fatalRetryCount < MAX_FATAL_RETRIES) {
                   hls.stopLoad();
-                  hls.loadSource(playUrl);
+                  hls.loadSource(url);
                   hls.startLoad(-1);
                   fatalRetryCount++;
                 } else {
                   hls.startLoad(-1);
                 }
               } catch {}
-              lastLiveAdvanceAt = now;
-              const delay = Math.min(3000, 800 * consecStalls);
-              setTimeout(() => { liveNoDvrBusy = false; }, delay);
-            }
-          }, 1500);
 
-          statusCallback('HLS en vivo · sin DVR', 'ok');
+              lastLiveAdvanceAt = now;
+              const unlockDelay = Math.min(2200, 600 + consecStalls * 450);
+              setTimeout(() => { liveNoDvrBusy = false; }, unlockDelay);
+            }
+          }, 1000);
+
+          statusCallback('HLS en vivo · baja latencia', 'ok');
         };
 
         const disableLiveNoDvr = () => {
           if (liveStallTimer) clearInterval(liveStallTimer);
           liveStallTimer = null;
+
           if (liveSeekingHandler) {
             try { videoElement.removeEventListener('seeking', liveSeekingHandler); } catch {}
           }
+
           liveSeekingHandler = null;
           liveNoDvr = false;
           liveNoDvrBusy = false;
@@ -2191,150 +2282,146 @@ retryCount = 0;
         liveCleanup = disableLiveNoDvr;
 
         hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+          if (session !== sessionId || !hls || hls.destroyed) return;
           if (data?.details?.live) enableLiveNoDvr();
         });
 
-        hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(playUrl));
+        hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+          if (session === sessionId && hls && !hls.destroyed) {
+            hls.loadSource(url);
+          }
+        });
+
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (session !== sessionId || !hls || hls.destroyed) return;
           requestScreenWakeLock();
           statusCallback('HLS listo. Reproduciendo...', 'ok');
-          // Intentar reproducir sin silenciar (el usuario ya hizo clic)
           videoElement.play().catch(() => {
             statusCallback('Pulsa ▶ para iniciar', 'info');
           });
         });
 
         hls.on(Hls.Events.ERROR, (_, data) => {
-          if (!data.fatal) return;
+          if (session !== sessionId || !data?.fatal) return;
 
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             fatalRetryCount++;
-            const delay = Math.min(20000, 800 * Math.pow(1.4, fatalRetryCount));
-            const secs = Math.round(delay/1000);
-            statusCallback(secs > 3 ? `Sin señal · reintentando en ${secs}s` : 'Reconectando...', 'err');
+            const delay = Math.min(8000, 500 + (fatalRetryCount * 700));
+
+            statusCallback(
+              delay >= 3000 ? `Sin señal · reintentando en ${Math.round(delay / 1000)}s` : 'Reconectando...',
+              'err'
+            );
+
             if (!navigator.onLine) {
-statusCallback('Sin conexión a internet', 'err');
+              statusCallback('Sin conexión a internet', 'err');
               return;
             }
+
             setTimeout(() => {
-              if (hls && !hls.destroyed) {
-                try {
-                  hls.stopLoad();
-                  hls.loadSource(playUrl);
-                  hls.startLoad(-1);
-                } catch {}
-              }
+              if (session !== sessionId || !hls || hls.destroyed) return;
+              try {
+                hls.stopLoad();
+                hls.loadSource(url);
+                hls.startLoad(-1);
+              } catch {}
             }, delay);
+
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             statusCallback('Recuperando vídeo...', 'err');
-            try { hls.recoverMediaError(); } catch {}
-          } else {
-            if (!isExplicitHls) {
-              fallbackToNative();
-            } else {
-              const detail = String(data.details || '');
-              if (/CODECS|INCOMPATIBLE|BUFFER/i.test(detail)) {
-                errorCallback('El vídeo usa un códec o formato no compatible con este dispositivo.');
-              } else {
-                errorCallback('El formato de vídeo no es compatible o la fuente está dañada.');
-              }
-            }
-          }
-        });
-
-        function fallbackToNative() {
-          if (hls && !hls.destroyed) hls.destroy();
-          hls = null;
-          retryCount = 0;
-          if (liveSeekingHandler) {
-            videoElement.removeEventListener('seeking', liveSeekingHandler);
-          }
-          liveSeekingHandler = null;
-          liveNoDvr = false;
-          liveNoDvrBusy = false;
-          videoElement.controls = true;
-          statusCallback('Probando reproductor nativo...');
-          videoElement.pause();
-          videoElement.removeAttribute('src');
-          videoElement.load();
-          videoElement.src = playUrl;
-          videoElement.load();
-          videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar', 'info'));
-        }
-
-        // Indicador de buffering
-        let bufferingTimer = null;
-        videoElement.addEventListener('progress', () => {
-          const buffered = videoElement.buffered;
-          if (buffered.length && videoElement.duration) {
-            const percent = (buffered.end(0) / videoElement.duration) * 100;
-            if (percent < 100 && !videoElement.paused) {
-              statusCallback(`Buffering ${Math.round(percent)}%`, 'info');
-            } else {
-              statusCallback('Reproduciendo...', 'ok');
-            }
-          }
-        });
-
-        // Watchdog para detectar audio sin vídeo
-        let watchdogDone = false;
-        let videoWatchdog = null;
-        const clearVideoWatchdog = () => {
-          if (watchdogDone) return;
-          watchdogDone = true;
-          if (videoWatchdog) {
-            clearInterval(videoWatchdog);
-            videoWatchdog = null;
-          }
-        };
-        const checkVideoTrack = () => {
-          if (watchdogDone || !videoElement) return;
-          if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
-            clearVideoWatchdog();
-            return;
-          }
-          if (!hls || hls.destroyed) return;
-          if (!videoElement.paused && videoElement.currentTime > 0) {
-            statusCallback('Audio detectado; recuperando vídeo...', 'err');
             try {
               hls.recoverMediaError();
-              hls.startLoad(-1);
-            } catch {}
+            } catch {
+              try { hls.startLoad(-1); } catch {}
+            }
+
+          } else if (!isExplicitHls && canNativePlay(url)) {
+            if (hls && !hls.destroyed) {
+              try { hls.destroy(); } catch {}
+            }
+            hls = null;
+            clearLiveGuards(videoElement);
+            playNative(videoElement, url, statusCallback, session);
+
+          } else {
+            const detail = String(data.details || '');
+            if (/CODECS|INCOMPATIBLE/i.test(detail)) {
+              errorCallback('El vídeo usa un códec o formato no compatible con este dispositivo.');
+            } else {
+              errorCallback('El formato de vídeo no es compatible o la fuente está dañada.');
+            }
+          }
+        });
+
+        // Estado de buffering sin alterar la reproducción.
+        const onPlaying = () => {
+          if (session === sessionId) statusCallback('Reproduciendo...', 'ok');
+        };
+        const onWaiting = () => {
+          if (session === sessionId) statusCallback('Esperando señal...', 'info');
+        };
+        const onStalled = () => {
+          if (session === sessionId && hls && !hls.destroyed) {
+            statusCallback('Señal inestable · recuperando...', 'err');
+            try { hls.startLoad(-1); } catch {}
           }
         };
-        videoElement.addEventListener('loadeddata', checkVideoTrack);
-        videoElement.addEventListener('playing', checkVideoTrack);
-        videoElement.addEventListener('resize', checkVideoTrack);
-        videoWatchdog = setInterval(checkVideoTrack, 2500);
-        setTimeout(clearVideoWatchdog, 12000);
+
+        videoElement.addEventListener('playing', onPlaying);
+        videoElement.addEventListener('waiting', onWaiting);
+        videoElement.addEventListener('stalled', onStalled);
+
         hls.attachMedia(videoElement);
+
+        // Se limpian listeners al detener/cambiar de canal mediante la propia
+        // sustitución de src y el control de sesión.
       } else {
-        statusCallback('Abriendo vídeo...');
-        videoElement.src = playUrl;
-        videoElement.load();
-        videoElement.play().catch(() => statusCallback('Pulsa ▶ para iniciar', 'info'));
+        // Reproductor nativo: MP4, HLS nativo de Android/WebView, etc.
+        playNative(videoElement, url, statusCallback, session);
       }
     } catch (err) {
-      errorCallback('Error al iniciar: ' + err.message);
+      if (session === sessionId) {
+        errorCallback('Error al iniciar: ' + (err?.message || err));
+      }
     }
   }
 
   function stop(videoElement) {
+    sessionId++;
     clearLiveGuards(videoElement);
     releaseScreenWakeLock();
     document.getElementById('playerFs')?.classList.remove('native-vod');
     destroyHls();
+
     if (videoElement) {
-      videoElement.pause();
+      try { videoElement.pause(); } catch {}
       videoElement.removeAttribute('src');
       videoElement.load();
+      videoElement.controls = true;
     }
+
     currentChannel = null;
-    if (abortController) { abortController.abort(); abortController = null; }
+    currentVideoElement = null;
+
+    if (abortController) {
+      try { abortController.abort(); } catch {}
+      abortController = null;
+    }
+
+    if (keepAliveTimer) {
+      clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
+    }
   }
 
   function getCurrentChannel() { return currentChannel; }
-  return { play, stop, getCurrentChannel, isHlsUrl, _getHls: () => hls };
+  return {
+    play,
+    stop,
+    getCurrentChannel,
+    isHlsUrl,
+    _getHls: () => hls
+  };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -2348,7 +2435,7 @@ const App = (() => {
   let currentListMeta = { id: null, name: '', url: '', method: '', proxy: '', updatedAt: 0 };
   let activeView = null;
   let viewHistoryActive = false;
-  const VIEW_IDS = ['viewExplore','viewLive','viewMovies','viewSeries','viewMyList','viewHistory','viewSettings','viewTermux'];
+  const VIEW_IDS = ['viewExplore','viewLive','viewMovies','viewSeries','viewMyList','viewHistory','viewSettings'];
   let activeProfile = { name: 'Usuario 1', emoji: '', bg: 'linear-gradient(135deg,#E50914,#8b0000)' };
   let curChannel = null;
   let rowObserver = null;
@@ -3279,21 +3366,7 @@ const App = (() => {
           const sep = proxy.includes('?') ? '&' : '?';
           urlToFetch = proxy + sep + 'url=' + encodeURIComponent(u);
         } else if (method === 'auto') {
-          try {
-            const resp = await fetch('http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(u), { signal: AbortSignal.timeout(300000), cache: 'no-store' });
-            if (resp.ok) {
-              const text = await resp.text();
-              const items = M3UParser.parse(text);
-              if (items.length) {
-                currentListMeta = { id: null, name: $('#listNameInput').value.trim() || 'Mi lista IPTV', url: u, method: 'Termux local', proxy: '', updatedAt: Date.now() };
-                setChannels(items);
-                setDStatus(`Cargado (Termux): ${items.length} elementos.`, 'ok');
-                setTimeout(closeDrawer, 900);
-                showLoadingBar(100);
-                return;
-              }
-            }
-          } catch (e) {}
+          urlToFetch = u;
         }
         const resp = await fetch(urlToFetch, { signal: AbortSignal.timeout(120000), cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -3380,8 +3453,8 @@ const App = (() => {
         }
       };
 
-      if (method === 'auto' || method === 'Termux local' || method === 'termux') {
-        const local = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 300000);
+      if (method === 'auto' || method === 'directo' || method === 'direct') {
+        const local = await tryFetch('directo', sourceUrl, 300000);
         if (local) return local;
       }
       if ((method === 'proxy' || proxyUrl) && proxyUrl) {
@@ -3555,7 +3628,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
         if (action === 'history') showView('history');
         else if (action === 'settings') showView('settings');
         else if (action === 'update') updateCurrentList();
-        else if (action === 'termux') showView('termux');
+        else if (action === 'direct') showView('direct');
         else if (action === 'info') toast('IPTV Studio Dulcinea 2026 v2 · dulcinea.stream', 'info');
       });
     });
@@ -3715,7 +3788,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
       b.classList.toggle('active',
         (b.dataset.bnav === 'explore' && name === 'explore') ||
         (b.dataset.bnav === 'live' && name === 'live') ||
-        (b.dataset.bnav === 'mylist' && (name === 'mylist' || name === 'history' || name === 'settings' || name === 'termux'))
+        (b.dataset.bnav === 'mylist' && (name === 'mylist' || name === 'history' || name === 'settings' || name === 'direct'))
       );
     });
     if (!viewHistoryActive) {
@@ -3741,7 +3814,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
       case 'mylist': renderViewMyList(); break;
       case 'history': renderViewHistory(); break;
       case 'settings': renderViewSettings(); break;
-      case 'termux': renderViewTermux(); break;
+      case 'direct': break;
     }
   }
 
@@ -3774,40 +3847,6 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
       .trim() || name;
   }
 
-  // ── Termux status check ──
-  async function checkTermuxStatus() {
-    const card = document.getElementById('termuxStatusCard');
-    if (!card) return;
-    card.innerHTML = '<div class="termux-checking"><div class="spinner"></div><span>Verificando conexión…</span></div>';
-    try {
-      const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 3000);
-      const resp = await fetch('http://127.0.0.1:8765/health', { signal: ctrl.signal, cache: 'no-store' });
-      clearTimeout(tid);
-      if (resp.ok) {
-        card.innerHTML = `
-          <div class="termux-ok">
-            <div class="termux-dot ok"></div>
-            <div>
-              <div class="termux-status-title">🟢 Termux conectado</div>
-              <div class="termux-status-sub">El proxy local está activo y listo para reproducir contenido.</div>
-            </div>
-          </div>
-          <div class="termux-info" style="margin-top:12px">Endpoint: <code>http://127.0.0.1:8765</code></div>`;
-      } else { throw new Error('HTTP ' + resp.status); }
-    } catch(e) {
-      card.innerHTML = `
-        <div class="termux-error">
-          <div class="termux-dot error"></div>
-          <div>
-            <div class="termux-status-title">🔴 Termux no disponible</div>
-            <div class="termux-status-sub">Termux debe estar activo para reproducir contenido en vivo y streams.</div>
-          </div>
-        </div>
-        <div class="termux-info" style="margin-top:12px">Para iniciar: abre Termux y ejecuta el script del servidor.</div>`;
-    }
-  }
-
   // ── Actualizar lista actual ──
   async function updateCurrentList() {
     const sourceUrl = currentListMeta.url;
@@ -3829,10 +3868,7 @@ https://test-streams.mux.dev/test_001/stream.m3u8`;
     }
     try {
       let loaded = null;
-      if (currentListMeta.method === 'auto' || currentListMeta.method === 'Termux local') {
-        loaded = await tryFetch('Termux local', 'http://127.0.0.1:8765/playlist?url=' + encodeURIComponent(sourceUrl), 300000);
-      }
-      if (!loaded) loaded = await tryFetch('directo', sourceUrl, 120000);
+            if (!loaded) loaded = await tryFetch('directo', sourceUrl, 120000);
       if (!loaded) { toast('No se pudo actualizar la lista', 'error'); return; }
       const fresh = loaded.items;
       const updated = {
@@ -4120,39 +4156,6 @@ document.getElementById('setClearHist')?.addEventListener('click',()=>showConfir
       '¿Eliminar todo el historial?','¿Eliminar todo el historial?',
       async()=>{ try{await StorageService.clearHistory();history=[];toast('Historial eliminado','info');}catch(e){toast('Error: '+e.message,'error');} }
     ));
-  }
-
-  // ═══════════════════════════════════════════════════
-  //  RENDER: ESTADO TERMUX
-  // ═══════════════════════════════════════════════════
-  function renderViewTermux() {
-    const el = document.getElementById('viewTermux');
-    if (!el) return;
-    el.innerHTML=`
-      <div class="view-header">
-        <button class="view-back" id="termuxBack">←</button>
-        <h2 class="view-title"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg> Estado de Termux</h2>
-      </div>
-      <div class="termux-container">
-        <div class="termux-desc">Termux actúa como proxy local para reproducir streams IPTV. Debe estar activo para que el contenido en vivo funcione correctamente.</div>
-        <div class="termux-status-card" id="termuxStatusCard">
-          <div class="termux-checking"><div class="spinner"></div><span>Verificando…</span></div>
-        </div>
-        <button class="btn btn-secondary" id="termuxRecheck" style="margin-top:16px;width:100%">↻ Verificar de nuevo</button>
-        <div class="termux-help">
-          <div class="termux-help-title">¿Cómo iniciar Termux?</div>
-          <ol class="termux-help-list">
-            <li>Abre Termux en tu dispositivo Android</li>
-            <li>Ejecuta: <code>python server.py</code></li>
-            <li>Verifica que escucha en el puerto 8765</li>
-            <li>Pulsa "Verificar de nuevo" aquí</li>
-          </ol>
-        </div>
-      </div>
-    `;
-    document.getElementById('termuxBack')?.addEventListener('click',()=>hideAllViews());
-    document.getElementById('termuxRecheck')?.addEventListener('click',()=>checkTermuxStatus());
-    checkTermuxStatus();
   }
 
   return {
