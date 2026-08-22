@@ -2392,7 +2392,7 @@ const App = (() => {
     div.dataset.rowKey = title;
     div.innerHTML = `
       <div class="row-hdr">
-        <span class="row-ttl">${esc(title)}</span>
+        <span class="row-ttl">${title.includes("<svg") ? title : esc(title)}</span>
         <span class="row-count">${count}</span>
       </div>
       <div class="car-wrap">
@@ -2416,7 +2416,7 @@ const App = (() => {
 
     sec.innerHTML = `
       <div class="row-hdr">
-        <span class="row-ttl">${esc(title)}</span>
+        <span class="row-ttl">${title.includes("<svg") ? title : esc(title)}</span>
         <span class="row-exp">Explorar todo ›</span>
         <span class="row-count">${items.length}</span>
       </div>
@@ -2515,7 +2515,7 @@ const App = (() => {
     if (info) {
       const badge = document.createElement('div');
       badge.className = 'card-type-badge ' + info.cls;
-      badge.textContent = info.label;
+      badge.innerHTML = info.label;
       thumb.appendChild(badge);
     }
 
